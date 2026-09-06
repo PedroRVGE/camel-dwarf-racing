@@ -128,6 +128,19 @@ keycloak:
   realm: ${KEYCLOAK_REALM:camelracing}
 
 # =============================================================================
+# REGLAS DE NEGOCIO CONFIGURABLES
+# =============================================================================
+camelracing:
+  teams:
+    # Cuantos integrantes admite un equipo como maximo.
+    #
+    # El enunciado pide explicitamente que este numero sea configurable, y por eso
+    # esta aca y no escrito en el codigo: la carrera original era de cinco enanos
+    # contra un camello, pero nada garantiza que la liga siga usando cinco.
+    # Cambiarlo tiene que ser editar esta linea, no recompilar.
+    max-members: ${TEAM_MAX_MEMBERS:5}
+
+# =============================================================================
 # CORS
 # =============================================================================
 # Desde que direcciones del navegador se acepta que llamen a esta API.
