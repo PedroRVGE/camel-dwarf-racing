@@ -79,6 +79,24 @@ Tres opciones de ambos que vale la pena entender:
   se apaga: obliga a que quien pide el token conozca la contraseña del usuario,
   que es justamente lo que OAuth2 viene a evitar.
 
+### El scope `basic` no se puede olvidar
+
+`defaultClientScopes` lista los scopes que Keycloak le aplica al cliente sin que
+nadie los pida. Al escribirlo a mano se **reemplaza** la lista por defecto, y ahí
+hay una trampa que cuesta encontrar: si no se incluye `basic`, los tokens salen
+**sin el claim `sub`**.
+
+`sub` es el identificador del usuario en Keycloak, y es el único dato de
+identidad que no cambia nunca: el `preferred_username` y el correo los puede
+editar un administrador, el `sub` no. Es lo que guarda el módulo de auditoría
+para decir quién hizo cada cosa, y lo que devuelve `GET /api/auth/profile` como
+`id`.
+
+El síntoma es engañoso porque todo lo demás funciona: el login anda, los roles
+llegan, la firma valida, y el campo `id` simplemente viene en `null` sin ningún
+error en ningún log. Se descubrió justamente así, viendo un `"id": null` en la
+respuesta del perfil.
+
 **Tres usuarios**, que son los que el punto 8 del enunciado pide como datos
 iniciales mínimos:
 

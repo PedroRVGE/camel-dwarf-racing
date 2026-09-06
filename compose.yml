@@ -66,15 +66,27 @@ services:
       # puerto, asi que para el navegador es otro origen y sin esto el navegador
       # bloquea todas las llamadas antes de que salgan.
       - CORS_ALLOWED_ORIGINS=http://localhost:${WEB_PORT:-3000}
-    # TODO (llega con SecurityConfig): healthcheck contra /actuator/health.
-    #
-    # Actuator ya esta en el build.gradle y el endpoint responde, pero todavia no
-    # existe SecurityConfig, asi que Spring Security aplica su cadena por defecto
-    # y protege TODO, /actuator/health incluido. Un healthcheck contra una ruta
-    # que devuelve 401 falla siempre y dejaria el contenedor marcado "unhealthy"
-    # con la aplicacion funcionando perfecta.
-    #
-    # El healthcheck vuelve en el mismo commit que abre esa ruta con permitAll.
+    healthcheck:
+      # Consulta /actuator/health, que responde UP recien cuando el contexto de
+      # Spring termino de levantar y la base esta conectada. Sin esto, Docker
+      # daria por "arrancado" el contenedor apenas existe el proceso, que son
+      # veinte segundos antes de que la API conteste algo.
+      #
+      # La ruta esta abierta con permitAll en SecurityConfig: Docker consulta sin
+      # ningun token y no puede tenerlo, no hay usuario detras. Solo expone
+      # {"status":"UP"}, sin detalles (application.yml, show-details: never).
+      #
+      # El -f de curl es lo que hace que un 401 o un 500 cuenten como fallo: sin
+      # el, curl termina con exito igual y el healthcheck daria "sano" ante
+      # cualquier respuesta.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # start_period generoso: la primera vez, Flyway tiene que aplicar todas las
+      # migraciones antes de que la app responda. Los fallos dentro de esta
+      # ventana no cuentan para los retries.
+      start_period: 40s
     networks:
       - camelracing-net
 

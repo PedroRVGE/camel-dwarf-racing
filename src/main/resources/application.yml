@@ -126,3 +126,22 @@ keycloak:
   # aparece en tres lugares distintos (Swagger, la validacion del token y el
   # frontend) y basta que uno quede desfasado para que todo devuelva 401.
   realm: ${KEYCLOAK_REALM:camelracing}
+
+# =============================================================================
+# CORS
+# =============================================================================
+# Desde que direcciones del navegador se acepta que llamen a esta API.
+#
+# El frontend corre en otro puerto, y para el navegador eso ya es otro ORIGEN: sin
+# esta lista bloquea cada llamada antes de que salga, y el error aparece en la
+# consola del navegador sin que el backend se entere de nada.
+#
+# Los dos valores por defecto cubren los dos modos de trabajo del frontend:
+#   3000 -> el contenedor de nginx que levanta docker compose
+#   5173 -> el servidor de desarrollo de Vite, cuando se trabaja en el frontend
+# En docker el valor real llega por CORS_ALLOWED_ORIGINS desde compose.yml.
+#
+# Se listan explicitamente y no se pone "*": con el comodin, cualquier pagina de
+# internet podria pegarle a esta API desde el navegador de alguien logueado.
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}

@@ -44,6 +44,7 @@
         "pkce.code.challenge.method": "S256"
       },
       "defaultClientScopes": [
+        "basic",
         "web-origins",
         "profile",
         "roles",
@@ -72,6 +73,7 @@
         "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:5173/*"
       },
       "defaultClientScopes": [
+        "basic",
         "web-origins",
         "profile",
         "roles",
