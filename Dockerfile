@@ -106,6 +106,12 @@ RUN jlink \
 # temurin actualice su imagen.
 FROM alpine:3.22
 
+# curl hace falta para el healthcheck de compose.yml, que consulta
+# /actuator/health. Alpine no lo trae, y sin el el contenedor queda marcado
+# "unhealthy" para siempre aunque la aplicacion este perfecta: Docker no puede
+# ejecutar el comando del healthcheck y lo cuenta como fallo. Son ~2 MB.
+RUN apk add --no-cache curl
+
 # El runtime a medida se copia a /opt/java y se pone en el PATH para poder
 # invocar "java" a secas en el ENTRYPOINT.
 ENV JAVA_HOME=/opt/java
