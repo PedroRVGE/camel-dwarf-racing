@@ -65,10 +65,29 @@ dependencies {
     // que las entidades y las tablas coinciden, y si no, falla ahi mismo en vez
     // de romper en el primer request.
     //
-    // flyway-database-postgresql es OBLIGATORIO aparte desde Flyway 10: el
-    // soporte de cada motor se saco del core a su propio modulo. Sin el, Flyway
-    // arranca y falla con "Unsupported Database: PostgreSQL".
+    // SON TRES DEPENDENCIAS Y LAS TRES HACEN FALTA:
+    //
+    //  - flyway-core: la herramienta.
+    //
+    //  - flyway-database-postgresql: el soporte del motor. Es obligatorio aparte
+    //    desde Flyway 10, que saco cada base de datos del core a su propio modulo.
+    //    Sin el, Flyway arranca y falla con "Unsupported Database: PostgreSQL".
+    //
+    //  - spring-boot-flyway: la AUTOCONFIGURACION de Spring Boot, o sea el codigo
+    //    que crea el bean de Flyway y lo ejecuta antes que Hibernate.
+    //
+    // Esa tercera es la que nadie espera tener que poner. En Spring Boot 3 la
+    // autoconfiguracion de Flyway venia adentro del monolitico
+    // spring-boot-autoconfigure, asi que alcanzaba con tener flyway-core en el
+    // classpath. Boot 4 partio ese modulo en uno por tecnologia, y si no se pide
+    // el de Flyway explicitamente, la integracion simplemente no existe.
+    //
+    // Y falla de la peor manera posible: NO hay error de Flyway, ni un warning, ni
+    // una linea en el log. Flyway nunca corre, la base queda vacia, y lo que se ve
+    // es a Hibernate abortando el arranque con "Schema validation: missing table
+    // [competitors]", que apunta al lugar equivocado.
     implementation 'org.flywaydb:flyway-core'
+    implementation 'org.springframework.boot:spring-boot-flyway'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
     // Seguridad. Son DOS dependencias con papeles distintos:
