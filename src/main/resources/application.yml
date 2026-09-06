@@ -1,0 +1,128 @@
+spring:
+  application:
+    name: camelracing
+  profiles:
+    # Perfil por defecto si nadie dice lo contrario.
+    # Se puede sobreescribir con la variable de entorno SPRING_PROFILES_ACTIVE
+    # o con --spring.profiles.active=... al ejecutar.
+    active: docker
+
+  jpa:
+    # Open Session In View: por defecto Spring lo deja en true y mantiene la
+    # sesion de Hibernate abierta durante TODO el request. Eso "tapa" los errores
+    # de carga LAZY, pero esconde el problema N+1 y mantiene la conexion a la BD
+    # ocupada de mas. Lo apagamos y resolvemos las relaciones donde corresponde:
+    # en el repositorio (JOIN FETCH / @EntityGraph) y con @Transactional en el
+    # servicio. Al apagarlo tambien desaparece el warning del arranque.
+    open-in-view: false
+
+    hibernate:
+      # validate, NO update, y va aca en el archivo comun para que ningun perfil
+      # se lo olvide.
+      #
+      # Con "update" el esquema lo deduce Hibernate de las entidades al arrancar.
+      # Nunca borra ni renombra nada, asi que las columnas viejas se acumulan sin
+      # que quede registro, y no hay forma de declarar un indice o un dato
+      # inicial. Aca el esquema lo crea Flyway desde archivos .sql versionados
+      # (ver db/migration) e Hibernate queda como control cruzado: al arrancar
+      # compara las entidades contra las tablas y, si no coinciden, falla en el
+      # arranque en vez de romper en el primer request.
+      ddl-auto: validate
+
+    properties:
+      hibernate:
+        format_sql: true
+        query:
+          # Falla el arranque si una consulta con paginacion necesita traer toda
+          # la coleccion a memoria, en vez de hacerlo en silencio.
+          fail_on_pagination_over_collection_fetch: true
+
+  # ===========================================================================
+  # PAGINACION
+  # ===========================================================================
+  # El enunciado exige filtrado, paginacion y ordenamiento en los listados. Los
+  # controladores reciben un Pageable y Spring lo arma solo a partir de los
+  # parametros ?page=, ?size= y ?sort=. Esto fija los valores por defecto.
+  #
+  # max-page-size es lo importante: sin el, cualquiera pide ?size=1000000 y se
+  # trae la tabla entera en un request, que es exactamente el problema que la
+  # paginacion venia a evitar. Spring recorta al maximo en silencio.
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+        # false = la primera pagina es la 0, que es como lo cuenta Spring Data y
+        # como lo esperan los ejemplos de Swagger. Ponerlo en true hace que
+        # ?page=1 sea la primera, y despues nadie se acuerda de cual de las dos
+        # convenciones usaba este proyecto.
+        one-indexed-parameters: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# =============================================================================
+# ACTUATOR
+# =============================================================================
+# Solo se expone /actuator/health, que es lo que consulta el healthcheck de la
+# app en compose.yml para saber si termino de arrancar de verdad (contexto
+# levantado y base conectada), y no solo si el proceso existe.
+#
+# La lista completa de endpoints de Actuator NO se expone a proposito: entre
+# ellos esta /actuator/env, que devuelve todas las variables de entorno con la
+# contrasena de la base adentro. Exponer eso en una API publica es justo una de
+# las condiciones que reprueban el trabajo ("el repositorio contiene contrasenas
+# o secretos", pero servido en vivo).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # never: la respuesta es {"status":"UP"} y nada mas. Con "always" el
+      # endpoint detalla cada componente, incluida la URL de la base de datos con
+      # el usuario adentro, y este endpoint es publico (ver SecurityConfig).
+      show-details: never
+
+# =============================================================================
+# SWAGGER / OpenAPI (springdoc)
+# =============================================================================
+# Funciona sin configurar nada; esto solo ajusta detalles de la pantalla.
+#   Interfaz:  http://localhost:8080/swagger-ui.html
+#   JSON:      http://localhost:8080/v3/api-docs
+# =============================================================================
+springdoc:
+  api-docs:
+    # Ruta del JSON que genera springdoc. La interfaz lo lee de aca.
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    # Agrupa los endpoints por @Tag y los deja colapsados al abrir la pagina.
+    # Sin esto aparecen todos los metodos desplegados y hay que scrollear mucho.
+    tags-sorter: alpha
+    operations-sorter: alpha
+    doc-expansion: none
+    # Muestra cuanto tardo cada request al probarlo con "Try it out".
+    display-request-duration: true
+    oauth:
+      # Con que cliente se presenta Swagger ante Keycloak al apretar "Authorize".
+      # Tiene que existir en el realm (ver keycloak/realm-camelracing.json).
+      client-id: camelracing-swagger
+      # PKCE: lo que reemplaza al secreto en un cliente que corre en el navegador.
+      # Sin esto Keycloak rechaza el login, porque el cliente esta configurado
+      # para exigirlo.
+      use-pkce-with-authorization-code-grant: true
+
+# =============================================================================
+# KEYCLOAK
+# =============================================================================
+keycloak:
+  # Direccion de Keycloak vista DESDE EL NAVEGADOR (no desde el contenedor).
+  # La usa Swagger para saber a donde mandarte a loguear.
+  # El valor real llega por variable de entorno desde compose.yml.
+  public-url: ${KEYCLOAK_PUBLIC_URL:http://localhost:8180}
+  # Nombre del realm. Va como variable y no escrito a mano en cada lado porque
+  # aparece en tres lugares distintos (Swagger, la validacion del token y el
+  # frontend) y basta que uno quede desfasado para que todo devuelva 401.
+  realm: ${KEYCLOAK_REALM:camelracing}

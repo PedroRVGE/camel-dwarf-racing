@@ -1,0 +1,155 @@
+### Spring Initializr ###
+HELP.md
+
+### Gradle ###
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### Secretos / configuración local ###
+# El .env real NUNCA se sube: lleva usuario y contraseña de la base de datos.
+# La plantilla sí, para que otro pueda copiarla con: cp .env.template .env
+.env
+.env.*
+!.env.template
+!.env.example
+
+### Logs y temporales ###
+*.log
+logs/
+*.pid
+*.tmp
+*.bak
+*.swp
+*~
+
+### Frontend (React + Vite, en frontend/) ###
+# node_modules pesa cientos de MB y se reconstruye entero con "npm ci" a partir
+# del package-lock.json, que ese SI se versiona. Subirlo es el error clasico que
+# convierte un repo de 2 MB en uno de 400 MB.
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+npm-debug.log*
+yarn-error.log*
+# El .env del frontend lleva la URL de la API y el realm de Keycloak. No son
+# secretos, pero cambian por maquina; la plantilla es frontend/.env.example.
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+### STS / Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+# =====================================================================
+#  Basura del sistema de archivos (macOS / Windows / Linux)
+# =====================================================================
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.DocumentRevisions-V100
+.TemporaryItems
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.apdisk
+Icon?
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+.directory
+.Trash-*
+
+# =====================================================================
+#  Duplicados y basura de servicios de sincronización
+#  (Google Drive, OneDrive, iCloud, Dropbox)
+#
+#  Cuando dos máquinas tocan el mismo archivo, estos servicios no
+#  sobrescriben: dejan una COPIA con el nombre cambiado. Si esa copia cae
+#  dentro del repo, Git la ve como archivo nuevo y se termina subiendo
+#  "ChefService (1).java" al lado del original. Estas reglas la ignoran.
+# =====================================================================
+
+### Copias en conflicto (Dropbox, OneDrive, Google Drive) ###
+*conflicted copy*
+*[Cc]onflicted [Cc]opy*
+*copia en conflicto*
+*[Vv]ersión en conflicto*
+*[Vv]ersion en conflicto*
+*[Cc]onflicto de*
+
+### Duplicados con sufijo: "archivo (1).java", "archivo copia.java" ###
+* ([0-9])
+* ([0-9]).*
+* ([0-9][0-9])
+* ([0-9][0-9]).*
+* copia
+* copia.*
+* [Cc]opy
+* [Cc]opy.*
+
+### iCloud Drive ###
+# Placeholder de un archivo que todavía no se bajó a esta máquina.
+*.icloud
+.icloud
+
+### Google Drive (Drive para escritorio) ###
+.tmp.drivedownload/
+.tmp.driveupload/
+# Accesos directos a documentos de Google (no son archivos reales)
+*.gdoc
+*.gsheet
+*.gslides
+*.gdraw
+*.gform
+*.gtable
+*.gjam
+*.glink
+*.gmap
+*.gsite
+
+### OneDrive ###
+# Marcador interno que OneDrive deja en las carpetas sincronizadas
+.849C9593-D756-4E56-8D6E-42412F2A707B
+# Temporales de Office que aparecen al abrir un archivo
+~$*
+
+### Dropbox ###
+.dropbox
+.dropbox.attr
+.dropbox.cache/

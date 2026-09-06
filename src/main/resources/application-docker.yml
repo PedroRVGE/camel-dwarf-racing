@@ -1,0 +1,65 @@
+# =============================================================================
+# PERFIL "docker"  ->  se activa con: SPRING_PROFILES_ACTIVE=docker
+# =============================================================================
+# Para correr con "docker compose up -d". Los valores llegan como variables de
+# entorno desde compose.yml (que a su vez las lee del .env).
+# El host de la base NO es localhost: es "db", el nombre del servicio en la red
+# de Docker.
+# =============================================================================
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    # Esquema + datos de ejemplo. La explicacion larga de por que son dos
+    # carpetas separadas esta en application-dev.yml.
+    locations: classpath:db/migration,classpath:db/seed
+    # Espera a que la base acepte conexiones antes de rendirse. compose.yml ya
+    # hace que la app arranque despues del healthcheck de Postgres, asi que en la
+    # practica no deberia hacer falta; esto cubre el caso de levantar la app sola
+    # con la base todavia iniciando.
+    connect-retries: 10
+
+  jpa:
+    show-sql: true
+
+  # ===========================================================================
+  # KEYCLOAK: validacion de los tokens
+  # ===========================================================================
+  # Aca esta LA trampa de meter Keycloak en Docker, y por que son dos URLs
+  # distintas apuntando al mismo servidor.
+  #
+  # Keycloak tiene dos direcciones segun quien lo mire:
+  #
+  #   - Desde el NAVEGADOR (Swagger, el frontend de React):  localhost:8180
+  #   - Desde la APLICACION, que esta adentro de la red de Docker: keycloak:8080
+  #     ("keycloak" es el nombre del servicio en compose.yml; para el contenedor
+  #     de la app, "localhost" es el mismo, no Keycloak)
+  #
+  # El token que emite Keycloak lleva adentro un campo "iss" (issuer) que dice
+  # quien lo emitio, y ahi figura la direccion que uso el NAVEGADOR. Si la app
+  # intentara validar contra keycloak:8080, veria que el iss dice otra cosa y
+  # rechazaria todos los tokens con un 401 sin mucha explicacion.
+  #
+  # Por eso se separan las dos cosas:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # De donde BAJA la app la clave publica para verificar la firma.
+          # Es una llamada de servidor a servidor, asi que va por la red interna.
+          jwk-set-uri: ${KEYCLOAK_JWKS_URI}
+          # Contra que COMPARA el campo "iss" del token. Tiene que ser, letra por
+          # letra, la direccion que ve el navegador.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    # Descomentar para ver por que se rechaza un token o por que falta un rol.
+    # Es lo primero que conviene mirar si todo devuelve 401 o 403.
+    # org.springframework.security: debug

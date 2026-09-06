@@ -1,0 +1,50 @@
+# =============================================================================
+# PERFIL "dev"  ->  se activa con: spring.profiles.active=dev
+# =============================================================================
+# Para trabajar en tu maquina, con un Postgres local (sin Docker) y la app
+# corriendo desde el IDE.
+#
+# Igual hace falta Keycloak levantado, porque la app no sabe emitir tokens:
+#     docker compose up -d keycloak
+# =============================================================================
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/camelracing
+    username: camelracing
+    password: camelracing
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    # DOS carpetas, no una. Es la diferencia entre "el esquema" y "los datos de
+    # ejemplo", y esa separacion es a proposito:
+    #
+    #   db/migration -> las tablas, las constraints y los indices. Va en TODOS
+    #                   los perfiles, incluido el de tests.
+    #   db/seed      -> los competidores, equipos y carreras de ejemplo que pide
+    #                   el punto 8 del enunciado. Va solo en dev y docker.
+    #
+    # Si el seed se aplicara tambien en los tests, cada test de listados y de
+    # standings arrancaria con nueve competidores y tres carreras que el no puso,
+    # y todos los conteos darian distinto. Los tests crean sus propios datos.
+    locations: classpath:db/migration,classpath:db/seed
+
+  jpa:
+    show-sql: true
+
+  # Keycloak. Aca las dos URLs SI son la misma, al reves de lo que pasa en
+  # application-docker.yml: corriendo la app fuera de Docker, tanto ella como el
+  # navegador ven a Keycloak en localhost. La separacion de alla existe solo
+  # porque adentro de la red de Docker "localhost" significa otra cosa.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8180/realms/camelracing
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    # Muestra los valores que van en los "?" de las consultas.
+    # Solo en dev: imprime datos reales en los logs.
+    org.hibernate.orm.jdbc.bind: trace

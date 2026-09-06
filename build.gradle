@@ -1,0 +1,182 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.0'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.eia'
+version = '0.0.1-SNAPSHOT'
+description = 'camelracing'
+
+java {
+    toolchain {
+        // El enunciado pide Java 21 o superior. Se usa 25, que es la version con
+        // la que se dicto la materia: cumple de sobra y evita tener dos versiones
+        // distintas dando vueltas entre este proyecto y el de clase.
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+
+    // Actuator. Expone /actuator/health, que es lo que el healthcheck de la app
+    // en compose.yml consulta para saber si ya termino de arrancar.
+    //
+    // Sin esto habria que inventar un endpoint de salud propio, o dejar que
+    // compose de por "sana" a la aplicacion apenas el contenedor arranca, que es
+    // mentira: el proceso existe pero Spring todavia esta levantando el contexto
+    // y la base ni se conecto.
+    //
+    // OJO: solo se expone "health". La lista completa de endpoints de Actuator
+    // incluye cosas como /actuator/env, que muestra TODAS las variables de
+    // entorno, contrasena de la base incluida. Ver application.yml.
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Swagger / OpenAPI. Genera la documentacion leyendo los @RestController y
+    // los DTOs, y sirve la interfaz web para probar los endpoints.
+    //
+    // OJO CON LA VERSION: la linea 2.x de springdoc es para Spring Boot 3 y NO
+    // arranca aca. Este proyecto usa Boot 4, que reorganizo los modulos internos
+    // (spring-boot-tomcat, spring-boot-health...), y solo springdoc 3.x los
+    // conoce. La version va fija porque el plugin dependency-management de Spring
+    // no administra las dependencias de springdoc.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
+
+    // ---- Flyway: el esquema de la base, versionado ----
+    //
+    // POR QUE NO ddl-auto: update
+    // Con "update" el esquema lo deduce Hibernate de las entidades al arrancar.
+    // Es comodo mientras se desarrolla, pero nunca borra ni cambia una columna
+    // existente: si se renombra un campo, la columna vieja queda ahi para
+    // siempre, y nadie tiene registro de que paso. Ademas no hay forma de
+    // ponerle un indice, una constraint compuesta o un dato inicial.
+    //
+    // Con Flyway el esquema son archivos .sql numerados que se aplican en orden y
+    // quedan registrados en una tabla flyway_schema_history. El mismo esquema, en
+    // el mismo orden, en la maquina de cualquiera y en produccion. Hibernate pasa
+    // a ddl-auto: validate, o sea que ya no toca nada: solo verifica al arrancar
+    // que las entidades y las tablas coinciden, y si no, falla ahi mismo en vez
+    // de romper en el primer request.
+    //
+    // flyway-database-postgresql es OBLIGATORIO aparte desde Flyway 10: el
+    // soporte de cada motor se saco del core a su propio modulo. Sin el, Flyway
+    // arranca y falla con "Unsupported Database: PostgreSQL".
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
+    // Seguridad. Son DOS dependencias con papeles distintos:
+    //
+    //  - starter-security: el motor de Spring Security (los filtros, las reglas
+    //    de "esta ruta la puede ver quien tenga tal rol"). Solo con esto, la app
+    //    queda protegida con un formulario de login propio.
+    //
+    //  - oauth2-resource-server: le ensena a validar tokens JWT emitidos por
+    //    OTRO (Keycloak). "Resource server" es el rol que cumple esta app en
+    //    OAuth2: guarda los datos y exige un token, pero no maneja contrasenas
+    //    ni emite tokens. De eso se encarga Keycloak.
+    //
+    // NO hace falta oauth2-client: ese seria para que la app INICIE el login
+    // redirigiendo al usuario. Aca el que hace el redirect es Swagger o el
+    // frontend de React desde el navegador, y la app solo recibe el token ya
+    // hecho.
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+
+    compileOnly 'org.projectlombok:lombok'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    runtimeOnly 'org.postgresql:postgresql'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // NO hay H2 en este proyecto, ni siquiera para tests.
+    //
+    // El enunciado permite H2 solo para pruebas, pero mas abajo estan
+    // Testcontainers: las pruebas corren contra un Postgres de verdad. H2 seria
+    // peor de las dos formas. Es mas permisivo con el GROUP BY, asi que un test
+    // verde en H2 no prueba que la consulta ande en produccion; y no entiende la
+    // sintaxis de Postgres que usan las migraciones de Flyway (ON CONFLICT,
+    // tipos uuid nativos), asi que ni siquiera podria aplicar el esquema real.
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    // Utilidades para testear endpoints protegidos sin tener que pedir un token
+    // real a Keycloak (@WithMockUser, jwt() postProcessor...).
+    testImplementation 'org.springframework.security:spring-security-test'
+
+    // ---- Testcontainers: bases y servicios REALES para los tests ----
+    //
+    // Levanta Postgres y Keycloak en Docker durante los tests y los apaga al
+    // terminar. Vale la pena aunque sea mas lento que una base en memoria:
+    //
+    //  - Las consultas de standings usan GROUP BY, SUM y CASE, y Postgres es mas
+    //    estricto que H2 con eso.
+    //  - Las migraciones de Flyway se aplican de verdad, contra el motor real. Un
+    //    error de sintaxis en un .sql aparece en el test y no en el despliegue.
+    //  - Los tests e2e necesitan tokens FIRMADOS de verdad. Con un Keycloak real
+    //    se prueba la cadena completa: login, firma, emisor y roles.
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'com.github.dasniko:testcontainers-keycloak:4.3.1'
+
+    // Cliente HTTP con el que los tests e2e pegan a la app como lo haria el
+    // navegador (RestClient viene en spring-web, pero esto trae las utilidades
+    // de test como TestRestTemplate).
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testCompileOnly 'org.projectlombok:lombok'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+sourceSets {
+    test {
+        resources {
+            // Suma la carpeta keycloak/ al classpath de los tests, para que el
+            // contenedor de Keycloak de los tests e2e importe EL MISMO realm que
+            // usa docker compose. La alternativa —copiar el JSON a
+            // src/test/resources— deja dos archivos que tarde o temprano se
+            // separan, y el test pasa a validar una configuracion que ya no es la
+            // que corre en serio.
+            srcDir 'keycloak'
+        }
+    }
+}
+
+// Testcontainers necesita saber que version de cada modulo usar. Este BOM fija
+// todas las versiones juntas, asi no hay que repetirlas dependencia por
+// dependencia ni arriesgarse a mezclar versiones incompatibles.
+dependencyManagement {
+    imports {
+        mavenBom "org.testcontainers:testcontainers-bom:1.21.4"
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+
+    // Los tests estan etiquetados con @Tag para poder correrlos por separado:
+    //   ./gradlew test                 -> todos
+    //   ./gradlew test -Pcapa=unit     -> solo los unitarios (segundos, sin Docker)
+    //   ./gradlew test -Pcapa=integracion
+    //   ./gradlew test -Pcapa=e2e
+    //
+    // Sirve para el dia a dia: mientras escribis codigo corres los unitarios,
+    // que son instantaneos, y dejas los de Docker para antes de commitear.
+    if (project.hasProperty('capa')) {
+        useJUnitPlatform {
+            includeTags project.property('capa').toString()
+        }
+    }
+
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'short'
+    }
+}

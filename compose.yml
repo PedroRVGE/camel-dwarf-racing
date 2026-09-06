@@ -1,0 +1,173 @@
+# =============================================================================
+#  docker compose up -d
+# =============================================================================
+#  Levanta el sistema entero: la base, el servidor de identidad y la API.
+#  El frontend se agrega mas adelante, en su propio servicio.
+#
+#  La clave "version" ya no se usa en Compose V2 (genera un warning al levantar).
+#
+#  Las variables ${...} las lee Compose automaticamente del archivo .env que esta
+#  junto a este compose.yml. Copia .env.example a .env y completa los valores.
+# =============================================================================
+
+services:
+
+  # ===========================================================================
+  # LA API
+  # ===========================================================================
+  app:
+    build: .
+    # Un nombre fijo en vez del que inventa Compose (carpeta-app-1). Sirve para
+    # que los comandos del README sean siempre los mismos:
+    #   docker logs camelracing-api
+    container_name: camelracing-api
+    restart: unless-stopped
+    ports:
+      # Mismo criterio que con ${DB_PORT} mas abajo: el de la IZQUIERDA es el
+      # puerto de TU maquina y el de la derecha el de adentro del contenedor, que
+      # es siempre 8080 porque es donde escucha Spring.
+      # El :-8080 es un valor por defecto: si no hay APP_PORT en el .env, usa 8080.
+      # Sirve para levantar este proyecto cuando ya tenes otro ocupando el 8080.
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      keycloak:
+        # service_healthy y no service_started: Keycloak tarda bastante en estar
+        # listo, y si la app arranca antes no puede bajar la clave publica para
+        # validar tokens y se cae en el arranque.
+        condition: service_healthy
+    environment:
+      # Activa el perfil "docker" -> carga application.yml + application-docker.yml
+      - SPRING_PROFILES_ACTIVE=docker
+
+      # OJO: aca va SIEMPRE el puerto 5432, no ${DB_PORT}.
+      # Dentro de la red de Docker los contenedores se hablan por el puerto
+      # INTERNO de Postgres, que es 5432. ${DB_PORT} es solo el puerto del HOST
+      # publicado mas abajo. Si en el .env ponés DB_PORT=5433 porque ya tenes un
+      # Postgres local ocupando el 5432, poner ${DB_PORT} aca haria que la app
+      # intente conectarse a db:5433 y falle con "connection refused".
+      - DB_URL=jdbc:postgresql://db:5432/${DB_NAME}
+      - DB_USERNAME=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+
+      # Las DOS direcciones de Keycloak. No es un error tener las dos: estan
+      # explicadas en application-docker.yml, pero en resumen:
+      #   - la app baja la clave publica por la red interna de Docker
+      - KEYCLOAK_JWKS_URI=http://keycloak:8080/realms/camelracing/protocol/openid-connect/certs
+      #   - y compara el emisor del token contra la direccion que vio el navegador
+      - KEYCLOAK_ISSUER_URI=http://localhost:${KEYCLOAK_PORT:-8180}/realms/camelracing
+      # La usan Swagger y el frontend para saber a donde mandar al usuario a
+      # loguearse.
+      - KEYCLOAK_PUBLIC_URL=http://localhost:${KEYCLOAK_PORT:-8180}
+      - KEYCLOAK_REALM=camelracing
+
+      # De donde acepta requests del navegador (CORS). El frontend corre en otro
+      # puerto, asi que para el navegador es otro origen y sin esto el navegador
+      # bloquea todas las llamadas antes de que salgan.
+      - CORS_ALLOWED_ORIGINS=http://localhost:${WEB_PORT:-3000}
+    # TODO (llega con SecurityConfig): healthcheck contra /actuator/health.
+    #
+    # Actuator ya esta en el build.gradle y el endpoint responde, pero todavia no
+    # existe SecurityConfig, asi que Spring Security aplica su cadena por defecto
+    # y protege TODO, /actuator/health incluido. Un healthcheck contra una ruta
+    # que devuelve 401 falla siempre y dejaria el contenedor marcado "unhealthy"
+    # con la aplicacion funcionando perfecta.
+    #
+    # El healthcheck vuelve en el mismo commit que abre esa ruta con permitAll.
+    networks:
+      - camelracing-net
+
+  # ===========================================================================
+  # KEYCLOAK: el servidor de identidad
+  # ===========================================================================
+  # Es quien guarda los usuarios, valida contrasenas y emite los tokens. La
+  # aplicacion no sabe ninguna contrasena: solo recibe tokens ya firmados y
+  # verifica la firma.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    container_name: camelracing-keycloak
+    restart: unless-stopped
+    # start-dev levanta Keycloak en modo desarrollo: sin HTTPS y con una base H2
+    # en memoria. Para produccion va "start" con su propia base y certificados.
+    # --import-realm hace que lea el JSON montado abajo y cree solo el realm,
+    # los roles y los usuarios.
+    command: ["start-dev", "--import-realm"]
+    environment:
+      # Usuario de la consola de administracion de Keycloak
+      # (http://localhost:8180). No tiene nada que ver con los usuarios de la app.
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN:-admin}
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # ESTO ES CLAVE: fija la direccion que Keycloak se pone a si mismo dentro
+      # del campo "iss" de los tokens. Sin esto usaria la que le llega en la
+      # cabecera Host, que cambia segun quien pregunte, y los tokens emitidos
+      # desde el navegador no validarian igual que los pedidos por curl.
+      - KC_HOSTNAME=http://localhost:${KEYCLOAK_PORT:-8180}
+      - KC_HOSTNAME_STRICT=false
+      - KC_HTTP_ENABLED=true
+      - KC_HEALTH_ENABLED=true
+    ports:
+      - "${KEYCLOAK_PORT:-8180}:8080"
+    volumes:
+      # De aca lee el realm al arrancar. :ro = solo lectura, el contenedor no
+      # tiene por que poder modificar un archivo del repo.
+      - ./keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # La imagen de Keycloak no trae curl ni wget, asi que se usa el truco de
+      # abrir un socket con el /dev/tcp de bash contra su endpoint de salud, que
+      # ademas escucha en un puerto aparte (9000).
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - camelracing-net
+
+  # ===========================================================================
+  # LA BASE DE DATOS
+  # ===========================================================================
+  db:
+    image: postgres:15-alpine
+    container_name: camelracing-db
+    restart: unless-stopped
+    ports:
+      # "puerto_de_tu_maquina:puerto_del_contenedor"
+      # Publicarlo no es obligatorio para que la app ande (se hablan por la red
+      # interna), pero permite conectarse con DBeaver o psql desde afuera para
+      # mirar los datos durante la demostracion.
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      # Volumen NOMBRADO, no un bind mount a una carpeta del repo.
+      #
+      # Es lo que hace que la base sea persistente, que el enunciado exige y que
+      # es una de las condiciones que reprueban el trabajo si falta: los datos
+      # viven en el volumen y sobreviven a "docker compose down" y a recrear el
+      # contenedor. Se borran solo con "docker compose down -v", que hay que pedir
+      # a proposito.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - camelracing-net
+
+# =============================================================================
+# RED
+# =============================================================================
+# Compose crearia una red solo igual, pero declararla explicitamente deja claro
+# que los tres servicios estan aislados en su propia red y que se encuentran
+# entre si por el nombre del servicio (db, keycloak, app), no por IP. Es lo que
+# el enunciado pide como "isolated Docker network".
+networks:
+  camelracing-net:
+    driver: bridge
+
+volumes:
+  postgres_data:

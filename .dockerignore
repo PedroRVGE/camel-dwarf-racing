@@ -1,0 +1,125 @@
+# Todo lo que esté acá NO se manda al daemon de Docker al hacer "docker build".
+#
+# Sirve para dos cosas:
+#   1) Velocidad: el contexto que se sube es mucho más chico.
+#   2) Seguridad: evita que el .env o la carpeta .git terminen dentro de la
+#      imagen si alguien agrega un "COPY . ." al Dockerfile.
+#
+# OJO: el Dockerfile necesita gradlew, gradle/, build.gradle, settings.gradle
+# y src/. Nada de eso puede quedar excluido acá.
+
+### Git ###
+.git/
+.gitignore
+.gitattributes
+.github/
+
+### Secretos y config local ###
+# El build no los usa: las variables llegan por "environment" en compose.yml.
+.env
+.env.*
+
+### Artefactos de build del host ###
+# La imagen compila desde cero adentro; copiar el build/ local solo ensucia
+# la caché y puede meter un .jar viejo.
+build/
+out/
+bin/
+.gradle/
+**/build/
+**/out/
+
+### IDEs ###
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+.sts4-cache/
+
+### Frontend ###
+# El Dockerfile de la raiz compila SOLO el backend. El frontend tiene su propio
+# Dockerfile en frontend/, con su propio contexto y su propio .dockerignore, asi
+# que mandar node_modules al build del backend es puro peso al pedo.
+frontend/
+
+### Docker y docs (no hacen falta para compilar) ###
+Dockerfile
+.dockerignore
+compose.yml
+docker-compose*.yml
+HELP.md
+README.md
+*.md
+
+### Logs y temporales ###
+*.log
+logs/
+*.tmp
+*.bak
+*.swp
+*~
+
+# =====================================================================
+#  Basura del sistema y de servicios de sincronización
+#  (mismo criterio que el .gitignore: si un duplicado se cuela en src/,
+#  el compilador lo puede tomar como archivo fuente y romper el build)
+# =====================================================================
+
+### macOS / Windows ###
+**/.DS_Store
+**/._*
+**/.AppleDouble
+**/.LSOverride
+**/.Spotlight-V100
+**/.DocumentRevisions-V100
+**/.TemporaryItems
+**/.Trashes
+**/.fseventsd
+**/Icon?
+**/Thumbs.db
+**/ehthumbs.db
+**/desktop.ini
+
+### Copias en conflicto y duplicados ###
+**/*conflicted copy*
+**/*copia en conflicto*
+**/*[Vv]ersión en conflicto*
+**/*[Vv]ersion en conflicto*
+**/* ([0-9])
+**/* ([0-9]).*
+**/* ([0-9][0-9])
+**/* ([0-9][0-9]).*
+**/* copia
+**/* copia.*
+**/* [Cc]opy
+**/* [Cc]opy.*
+
+### iCloud Drive ###
+**/*.icloud
+**/.icloud
+
+### Google Drive ###
+**/.tmp.drivedownload
+**/.tmp.driveupload
+**/*.gdoc
+**/*.gsheet
+**/*.gslides
+**/*.gdraw
+**/*.gform
+**/*.glink
+
+### OneDrive ###
+**/.849C9593-D756-4E56-8D6E-42412F2A707B
+**/~$*
+
+### Dropbox ###
+**/.dropbox
+**/.dropbox.attr
+**/.dropbox.cache
+
+### Keycloak (lo usa compose, no el build de la imagen) ###
+keycloak/

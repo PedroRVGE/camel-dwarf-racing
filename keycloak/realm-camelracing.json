@@ -1,0 +1,142 @@
+{
+  "realm": "camelracing",
+  "enabled": true,
+
+  "accessTokenLifespan": 1800,
+  "ssoSessionIdleTimeout": 3600,
+
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Administrador: gestiona usuarios, competidores, equipos, carreras, inscripciones, resultados y la auditoria"
+      },
+      {
+        "name": "organizer",
+        "description": "Organizador de carreras: gestiona carreras, inscripciones y resultados; consulta competidores y equipos"
+      },
+      {
+        "name": "viewer",
+        "description": "Espectador: solo lectura de informacion publica, calendario, resultados y clasificacion"
+      }
+    ]
+  },
+
+  "clients": [
+    {
+      "clientId": "camelracing-swagger",
+      "name": "Camel Racing (Swagger)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://localhost:8081/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8080",
+        "http://localhost:8081"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ]
+    },
+    {
+      "clientId": "camelracing-web",
+      "name": "Camel Racing (interfaz grafica React)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:5173/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ]
+    }
+  ],
+
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Ada",
+      "lastName": "Administradora",
+      "email": "admin@camelracing.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin",
+        "organizer",
+        "viewer"
+      ]
+    },
+    {
+      "username": "organizer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Oscar",
+      "lastName": "Organizador",
+      "email": "organizer@camelracing.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "organizer123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "organizer",
+        "viewer"
+      ]
+    },
+    {
+      "username": "viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Vera",
+      "lastName": "Espectadora",
+      "email": "viewer@camelracing.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "viewer123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "viewer"
+      ]
+    }
+  ]
+}
