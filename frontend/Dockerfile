@@ -69,5 +69,17 @@ EXPOSE 80
 # El healthcheck le da a compose una forma de saber si el sitio esta realmente
 # respondiendo, y no solo si el proceso existe. wget viene en la imagen de
 # Alpine; curl no.
+#
+# VA 127.0.0.1 Y NO localhost, Y NO ES INDISTINTO.
+# Adentro del contenedor, "localhost" resuelve primero a la direccion IPv6 (::1),
+# y este nginx escucha solo en IPv4. El resultado es que wget corta con
+# "can't connect to remote host: Connection refused" y el contenedor queda marcado
+# como unhealthy para siempre, mientras desde afuera el sitio se ve perfecto.
+#
+# Cuesta encontrarlo porque el sintoma apunta al lugar equivocado: parece que
+# nginx no esta levantado cuando en realidad esta atendiendo sin problemas en la
+# otra familia de direcciones. La alternativa seria agregarle "listen [::]:80" al
+# nginx.conf; se prefiere fijar la direccion aca porque no cambia el
+# comportamiento del servidor solo para conformar a una prueba.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=5 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
