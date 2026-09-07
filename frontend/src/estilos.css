@@ -1,0 +1,1067 @@
+/* ==========================================================================
+   ESTILOS DE LA APLICACION
+   ==========================================================================
+   Una sola hoja para todo el proyecto, sin librerias de estilos.
+
+   POR QUE UN ARCHIVO Y NO UNO POR COMPONENTE
+   Porque lo que hace que esto se vea como UN producto y no como varias paginas
+   sueltas es que los colores, los espacios y los tamanos sean los mismos en
+   todas partes. Con las variables de abajo, cambiar el color de acento es
+   cambiar una linea; repartido en veinte archivos, es una caceria.
+
+   SOBRE LOS COLORES
+   La paleta sale de la pagina de referencia del profesor: fondo oscuro azulado,
+   acento indigo, y los cuatro colores de estado. Todos los textos sobre fondo
+   estan elegidos para tener contraste suficiente: el enunciado pide "readable
+   typography and sufficient contrast", y el gris tenue que se usa para datos
+   secundarios sigue siendo legible, no decorativo.
+   ========================================================================== */
+
+:root {
+    /* Fondos, del mas hondo al mas cercano */
+    --fondo: #0d1117;
+    --fondo-elevado: #151a27;
+    --fondo-tarjeta: #1a2035;
+    --fondo-hundido: #111520;
+
+    --borde: #2a3a5c;
+    --borde-suave: #1e2740;
+
+    /* Textos */
+    --texto: #e2e8f0;
+    --texto-tenue: #8b95a8;
+    --texto-apagado: #5a6478;
+
+    /* Acento y estados */
+    --indigo: #6366f1;
+    --indigo-claro: #818cf8;
+    --cian: #06b6d4;
+    --verde: #22c55e;
+    --ambar: #f59e0b;
+    --rojo: #ef4444;
+
+    --radio: 10px;
+    --radio-chico: 6px;
+
+    --sombra: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    --fuente: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --fuente-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--fondo);
+    color: var(--texto);
+    font-family: var(--fuente);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+    margin: 0;
+    line-height: 1.25;
+    font-weight: 600;
+}
+
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.1rem; }
+
+p { margin: 0; }
+
+a {
+    color: var(--indigo-claro);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* El foco visible es obligatorio, no decorativo: es lo unico que le dice a
+   quien navega con el teclado donde esta parado. Nunca se quita. */
+:focus-visible {
+    outline: 2px solid var(--indigo-claro);
+    outline-offset: 2px;
+    border-radius: var(--radio-chico);
+}
+
+/* Texto que solo leen los lectores de pantalla: encabezados de columnas de
+   acciones, por ejemplo, que tienen que existir para que la tabla se entienda
+   pero no aportan nada visualmente. */
+.oculto {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ==========================================================================
+   EL MARCO: barra, contenido, pie
+   ========================================================================== */
+
+.marco {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.barra {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 12px 24px;
+    background: var(--fondo-elevado);
+    border-bottom: 1px solid var(--borde-suave);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-wrap: wrap;
+}
+
+.marca {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--texto);
+}
+
+.marca:hover {
+    text-decoration: none;
+}
+
+.marca-icono {
+    font-size: 1.6rem;
+}
+
+.marca strong {
+    display: block;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+}
+
+.marca small {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--texto-apagado);
+}
+
+.navegacion {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    flex-wrap: wrap;
+}
+
+.navegacion a {
+    padding: 7px 13px;
+    border-radius: var(--radio-chico);
+    color: var(--texto-tenue);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.navegacion a:hover {
+    background: var(--fondo-tarjeta);
+    color: var(--texto);
+    text-decoration: none;
+}
+
+/* react-router pone "active" en el enlace de la seccion en la que estas. Es lo
+   que responde la pregunta "donde estoy" sin tener que leer la direccion. */
+.navegacion a.active {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--indigo-claro);
+}
+
+.sesion {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sesion-usuario {
+    text-align: right;
+    color: var(--texto);
+}
+
+.sesion-usuario:hover {
+    text-decoration: none;
+}
+
+.sesion-nombre {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.sesion-rol {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--texto-apagado);
+}
+
+.contenido {
+    flex: 1;
+    padding: 28px 24px 48px;
+}
+
+.pie {
+    padding: 16px 24px;
+    border-top: 1px solid var(--borde-suave);
+    color: var(--texto-apagado);
+    font-size: 0.78rem;
+    text-align: center;
+}
+
+/* ==========================================================================
+   ESTRUCTURA DE PAGINA
+   ========================================================================== */
+
+.pagina {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.pagina-angosta {
+    max-width: 760px;
+}
+
+.pagina-encabezado {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.pagina-bajada {
+    color: var(--texto-tenue);
+    font-size: 0.92rem;
+    margin-top: 4px;
+}
+
+.miga {
+    font-size: 0.82rem;
+    color: var(--texto-apagado);
+}
+
+.acciones {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.rejilla-dos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+/* ==========================================================================
+   TARJETAS
+   ========================================================================== */
+
+.tarjeta {
+    background: var(--fondo-elevado);
+    border: 1px solid var(--borde-suave);
+    border-radius: var(--radio);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.tarjeta-tenue {
+    background: var(--fondo-hundido);
+}
+
+.tarjeta-encabezado {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.tarjeta-acciones {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.tarjetas-numero {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.tarjetas-numero-chicas {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.tarjeta-numero {
+    background: var(--fondo-elevado);
+    border: 1px solid var(--borde-suave);
+    border-radius: var(--radio);
+    padding: 16px 18px;
+    color: var(--texto);
+    display: block;
+}
+
+a.tarjeta-numero:hover {
+    border-color: var(--indigo);
+    text-decoration: none;
+}
+
+.tarjeta-numero-valor {
+    display: block;
+    font-family: var(--fuente-mono);
+    font-size: 1.9rem;
+    font-weight: 600;
+    color: var(--indigo-claro);
+    line-height: 1.1;
+}
+
+.tarjeta-numero-titulo {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--texto-tenue);
+    margin-top: 4px;
+}
+
+/* ==========================================================================
+   LISTAS Y FICHAS
+   ========================================================================== */
+
+.lista-tarjetas {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fila-enlazada {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--fondo-tarjeta);
+    border: 1px solid var(--borde-suave);
+    border-radius: var(--radio-chico);
+    color: var(--texto);
+}
+
+.fila-enlazada:hover {
+    border-color: var(--indigo);
+    text-decoration: none;
+}
+
+.fila-detalle {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--texto-tenue);
+    margin-top: 2px;
+}
+
+.lista-simple,
+.lista-explicativa {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.9rem;
+}
+
+.lista-explicativa {
+    color: var(--texto-tenue);
+}
+
+.ficha {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.ficha dt {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--texto-apagado);
+}
+
+.ficha dd {
+    margin: 2px 0 0;
+    font-size: 0.95rem;
+}
+
+.fila-de-insignias {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.tenue {
+    color: var(--texto-tenue);
+    font-size: 0.88rem;
+}
+
+.nota {
+    color: var(--texto-apagado);
+    font-size: 0.8rem;
+}
+
+.enlace-discreto {
+    font-size: 0.85rem;
+}
+
+.destacado {
+    color: var(--indigo-claro);
+    font-weight: 600;
+}
+
+.monoespaciado {
+    font-family: var(--fuente-mono);
+    font-size: 0.88rem;
+}
+
+/* ==========================================================================
+   TABLAS
+   ==========================================================================
+   La envoltura con desplazamiento horizontal es lo que evita que una tabla
+   ancha rompa el ancho de la pagina entera en una pantalla chica. Se desplaza
+   la tabla, no el sitio.
+   ========================================================================== */
+
+.tabla-envoltura {
+    overflow-x: auto;
+    border: 1px solid var(--borde-suave);
+    border-radius: var(--radio);
+}
+
+.tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.tabla thead th {
+    background: var(--fondo-hundido);
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--texto-apagado);
+    font-weight: 600;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--borde-suave);
+}
+
+.tabla tbody td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--borde-suave);
+    vertical-align: middle;
+}
+
+.tabla tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.tabla tbody tr:hover {
+    background: rgba(99, 102, 241, 0.06);
+}
+
+.tabla .numerica {
+    text-align: right;
+}
+
+.tabla-posiciones .fila-podio {
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.acciones-de-fila {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    white-space: nowrap;
+}
+
+.cambio {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.78rem;
+}
+
+.cambio code {
+    font-family: var(--fuente-mono);
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--fondo-hundido);
+}
+
+.cambio-antes { color: var(--texto-apagado); }
+.cambio-despues { color: var(--verde); }
+
+/* ==========================================================================
+   BOTONES
+   ========================================================================== */
+
+.boton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: var(--radio-chico);
+    border: 1px solid transparent;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.boton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+a.boton:hover {
+    text-decoration: none;
+}
+
+.boton-primario {
+    background: var(--indigo);
+    color: #fff;
+}
+
+.boton-primario:not(:disabled):hover {
+    background: var(--indigo-claro);
+}
+
+.boton-secundario {
+    background: var(--fondo-tarjeta);
+    border-color: var(--borde);
+    color: var(--texto);
+}
+
+.boton-secundario:not(:disabled):hover {
+    border-color: var(--indigo);
+}
+
+.boton-peligro {
+    background: transparent;
+    border-color: var(--rojo);
+    color: var(--rojo);
+}
+
+.boton-peligro:not(:disabled):hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+.boton-grande {
+    padding: 12px 28px;
+    font-size: 1rem;
+}
+
+/* Los botones de adentro de una fila de tabla no llevan marco: cinco recuadros
+   por fila convierten la tabla en un tablero de botones y se pierde el dato,
+   que es lo que se venia a leer. */
+.boton-texto {
+    background: none;
+    border: none;
+    padding: 2px 0;
+    color: var(--indigo-claro);
+    font-size: 0.85rem;
+}
+
+.boton-texto:not(:disabled):hover {
+    text-decoration: underline;
+}
+
+.boton-texto-peligro {
+    color: var(--rojo);
+}
+
+/* ==========================================================================
+   FORMULARIOS Y FILTROS
+   ========================================================================== */
+
+.filtros {
+    display: flex;
+    gap: 14px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    background: var(--fondo-elevado);
+    border: 1px solid var(--borde-suave);
+    border-radius: var(--radio);
+    padding: 16px;
+}
+
+.campo {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 160px;
+}
+
+.campo-ancho {
+    flex: 1;
+    min-width: 220px;
+}
+
+.campo label {
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--texto-tenue);
+}
+
+.campo-obligatorio {
+    color: var(--rojo);
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+    width: 100%;
+    padding: 9px 12px;
+    background: var(--fondo-hundido);
+    border: 1px solid var(--borde);
+    border-radius: var(--radio-chico);
+    color: var(--texto);
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.campo textarea {
+    resize: vertical;
+}
+
+.campo input:focus,
+.campo select:focus,
+.campo textarea:focus {
+    border-color: var(--indigo);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.campo input::placeholder {
+    color: var(--texto-apagado);
+}
+
+.campo-con-error input,
+.campo-con-error select,
+.campo-con-error textarea {
+    border-color: var(--rojo);
+}
+
+.campo-error {
+    font-size: 0.78rem;
+    color: var(--rojo);
+}
+
+.campo-ayuda {
+    font-size: 0.75rem;
+    color: var(--texto-apagado);
+}
+
+.formulario {
+    gap: 18px;
+}
+
+.formulario-fila {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.formulario-fila > .campo {
+    flex: 1;
+    min-width: 180px;
+}
+
+.formulario-botones {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 4px;
+    border-top: 1px solid var(--borde-suave);
+    margin-top: 4px;
+}
+
+.selector-de-modo {
+    display: flex;
+    gap: 8px;
+}
+
+.agregar-integrante {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    padding-top: 14px;
+    border-top: 1px solid var(--borde-suave);
+}
+
+/* ==========================================================================
+   INSIGNIAS DE ESTADO
+   ========================================================================== */
+
+.insignia {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    border: 1px solid;
+}
+
+.insignia-verde  { color: var(--verde);  background: rgba(34, 197, 94, 0.12);  border-color: rgba(34, 197, 94, 0.35); }
+.insignia-rojo   { color: var(--rojo);   background: rgba(239, 68, 68, 0.12);  border-color: rgba(239, 68, 68, 0.35); }
+.insignia-ambar  { color: var(--ambar);  background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); }
+.insignia-cian   { color: var(--cian);   background: rgba(6, 182, 212, 0.12);  border-color: rgba(6, 182, 212, 0.35); }
+.insignia-indigo { color: var(--indigo-claro); background: rgba(99, 102, 241, 0.14); border-color: rgba(99, 102, 241, 0.4); }
+.insignia-gris   { color: var(--texto-tenue); background: rgba(139, 149, 168, 0.12); border-color: rgba(139, 149, 168, 0.3); }
+
+/* ==========================================================================
+   ESTADOS: cargando, vacio, error
+   ========================================================================== */
+
+.estado {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--texto-tenue);
+}
+
+.estado-vacio,
+.estado-error {
+    background: var(--fondo-hundido);
+    border: 1px dashed var(--borde);
+    border-radius: var(--radio);
+}
+
+.estado-titulo {
+    font-weight: 600;
+    color: var(--texto);
+}
+
+.estado-detalle {
+    font-size: 0.88rem;
+    max-width: 460px;
+}
+
+.estado-error .estado-titulo {
+    color: var(--rojo);
+}
+
+.girador {
+    width: 22px;
+    height: 22px;
+    border: 2px solid var(--borde);
+    border-top-color: var(--indigo);
+    border-radius: 50%;
+    animation: girar 0.7s linear infinite;
+}
+
+@keyframes girar {
+    to { transform: rotate(360deg); }
+}
+
+/* Respeta a quien pidio menos movimiento en su sistema operativo: el indicador
+   sigue estando, pero deja de girar. */
+@media (prefers-reduced-motion: reduce) {
+    .girador {
+        animation: none;
+        border-top-color: var(--indigo);
+    }
+}
+
+/* ==========================================================================
+   AVISOS Y NOTIFICACIONES
+   ========================================================================== */
+
+.avisos {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: min(380px, calc(100vw - 40px));
+}
+
+.aviso {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radio-chico);
+    border: 1px solid;
+    font-size: 0.88rem;
+    box-shadow: var(--sombra);
+    background: var(--fondo-tarjeta);
+}
+
+.aviso-exito  { border-color: rgba(34, 197, 94, 0.5);  color: var(--verde); }
+.aviso-error  { border-color: rgba(239, 68, 68, 0.5);  color: var(--rojo); }
+.aviso-neutro { border-color: var(--borde); color: var(--texto-tenue); box-shadow: none; }
+
+.aviso-cerrar {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+}
+
+/* ==========================================================================
+   DIALOGO
+   ========================================================================== */
+
+.cortina {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 8, 15, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 200;
+}
+
+.dialogo {
+    background: var(--fondo-elevado);
+    border: 1px solid var(--borde);
+    border-radius: var(--radio);
+    padding: 24px;
+    max-width: 460px;
+    width: 100%;
+    box-shadow: var(--sombra);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.dialogo p {
+    color: var(--texto-tenue);
+    font-size: 0.92rem;
+}
+
+.dialogo-botones {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* ==========================================================================
+   PAGINACION Y PESTANAS
+   ========================================================================== */
+
+.paginacion {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.paginacion-resumen {
+    font-size: 0.85rem;
+    color: var(--texto-tenue);
+}
+
+.paginacion-botones {
+    display: flex;
+    gap: 8px;
+}
+
+.pestanas {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--borde-suave);
+}
+
+.pestana {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 18px;
+    color: var(--texto-tenue);
+    font-family: inherit;
+    font-size: 0.92rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.pestana:hover {
+    color: var(--texto);
+}
+
+.pestana-activa {
+    color: var(--indigo-claro);
+    border-bottom-color: var(--indigo);
+}
+
+/* ==========================================================================
+   PANTALLAS ESPECIALES: entrada, 403, 404
+   ========================================================================== */
+
+.portada {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.12), transparent 55%),
+        radial-gradient(circle at 80% 70%, rgba(6, 182, 212, 0.1), transparent 55%),
+        var(--fondo);
+}
+
+.portada-tarjeta {
+    background: var(--fondo-elevado);
+    border: 1px solid var(--borde-suave);
+    border-radius: 16px;
+    padding: 40px 36px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+    box-shadow: var(--sombra);
+}
+
+.portada-icono {
+    font-size: 3rem;
+}
+
+.portada-bajada {
+    color: var(--texto-tenue);
+}
+
+.portada-nota {
+    font-size: 0.8rem;
+    color: var(--texto-apagado);
+}
+
+.pagina-mensaje {
+    max-width: 560px;
+    margin: 60px auto;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.pagina-mensaje-codigo {
+    font-family: var(--fuente-mono);
+    font-size: 3.4rem;
+    font-weight: 600;
+    color: var(--indigo);
+    line-height: 1;
+}
+
+.pagina-mensaje p {
+    color: var(--texto-tenue);
+}
+
+.pagina-mensaje-detalle {
+    font-size: 0.86rem;
+    color: var(--texto-apagado);
+}
+
+.pagina-mensaje code {
+    font-family: var(--fuente-mono);
+    background: var(--fondo-hundido);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.88rem;
+}
+
+/* ==========================================================================
+   PANTALLAS CHICAS
+   ==========================================================================
+   El enunciado recomienda comportamiento responsive. Los tres cambios que de
+   verdad hacen falta: la rejilla de dos columnas pasa a una, la barra deja de
+   estirarse y los encabezados dejan de intentar poner titulo y boton en la
+   misma linea.
+   ========================================================================== */
+
+@media (max-width: 900px) {
+    .rejilla-dos {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    body {
+        font-size: 14px;
+    }
+
+    .barra {
+        padding: 10px 14px;
+        gap: 12px;
+    }
+
+    .navegacion {
+        order: 3;
+        width: 100%;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+    }
+
+    .contenido {
+        padding: 20px 14px 40px;
+    }
+
+    .pagina-encabezado {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .formulario-botones {
+        flex-direction: column-reverse;
+    }
+
+    .formulario-botones .boton {
+        width: 100%;
+    }
+}

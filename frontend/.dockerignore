@@ -1,0 +1,12 @@
+# Lo que NO se copia al contexto de construccion de la imagen.
+#
+# node_modules es el mas importante de la lista: son miles de archivos y, ademas
+# de hacer lenta la copia, traeria binarios compilados para el sistema operativo
+# de esta maquina adentro de una imagen de Linux. El Dockerfile instala las
+# dependencias adentro del contenedor justamente para evitar eso.
+node_modules
+dist
+.env
+.env.*
+*.log
+.DS_Store
