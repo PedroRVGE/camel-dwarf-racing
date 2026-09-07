@@ -1,5 +1,7 @@
 package com.eia.camelracing.registration.service;
 
+import com.eia.camelracing.audit.entity.AuditAction;
+import com.eia.camelracing.audit.service.AuditService;
 import com.eia.camelracing.common.dto.PageResponse;
 import com.eia.camelracing.common.exception.BusinessRuleException;
 import com.eia.camelracing.common.security.CurrentUser;
@@ -48,6 +50,7 @@ public class RegistrationService {
     private final ICompetitorRepository competitorRepository;
     private final ITeamRepository teamRepository;
     private final CurrentUser currentUser;
+    private final AuditService auditService;
 
     /**
      * Los estados que "cuentan": ocupan cupo y bloquean una segunda inscripcion.
@@ -124,7 +127,14 @@ public class RegistrationService {
         RaceRegistration registration = RegistrationMapper.toEntity(
                 request, race, competitor, team, currentUser.username());
 
-        return RegistrationMapper.toResponse(registrationRepository.save(registration));
+        registration = registrationRepository.save(registration);
+
+        auditService.registrar(AuditAction.REGISTRATION_CREATED, "RaceRegistration",
+                registration.getId(),
+                "Se inscribio a '" + nombreDelParticipante(registration)
+                        + "' en la carrera '" + race.getName() + "'");
+
+        return RegistrationMapper.toResponse(registration);
     }
 
     // ------------------------------------------------------------------
@@ -151,8 +161,16 @@ public class RegistrationService {
             registration.setLane(siguienteCarrilLibre(registration.getRace().getId()));
         }
         registration.setStatus(RegistrationStatus.APPROVED);
+        registration = registrationRepository.save(registration);
 
-        return RegistrationMapper.toResponse(registrationRepository.save(registration));
+        auditService.registrar(AuditAction.REGISTRATION_APPROVED, "RaceRegistration",
+                registration.getId(),
+                "Se aprobo la inscripcion de '" + nombreDelParticipante(registration)
+                        + "' con el carril " + registration.getLane(),
+                "status=" + RegistrationStatus.PENDING,
+                "status=" + RegistrationStatus.APPROVED + ", carril=" + registration.getLane());
+
+        return RegistrationMapper.toResponse(registration);
     }
 
     /**
@@ -176,8 +194,16 @@ public class RegistrationService {
         registration.setStatus(RegistrationStatus.REJECTED);
         registration.setValidationNotes(reason);
         registration.setLane(null);
+        registration = registrationRepository.save(registration);
 
-        return RegistrationMapper.toResponse(registrationRepository.save(registration));
+        auditService.registrar(AuditAction.REGISTRATION_REJECTED, "RaceRegistration",
+                registration.getId(),
+                "Se rechazo la inscripcion de '" + nombreDelParticipante(registration)
+                        + "'. Motivo: " + reason,
+                "status=" + RegistrationStatus.PENDING,
+                "status=" + RegistrationStatus.REJECTED);
+
+        return RegistrationMapper.toResponse(registration);
     }
 
     // ------------------------------------------------------------------
@@ -212,10 +238,17 @@ public class RegistrationService {
                             + ": la lista de participantes ya no se puede modificar");
         }
 
+        RegistrationStatus anterior = registration.getStatus();
         registration.setStatus(RegistrationStatus.CANCELLED);
         // Se libera el carril para que lo pueda tomar otro participante.
         registration.setLane(null);
         registrationRepository.save(registration);
+
+        auditService.registrar(AuditAction.REGISTRATION_CANCELLED, "RaceRegistration",
+                registration.getId(),
+                "Se dio de baja la inscripcion de '" + nombreDelParticipante(registration)
+                        + "' en la carrera '" + race.getName() + "'",
+                "status=" + anterior, "status=" + RegistrationStatus.CANCELLED);
     }
 
     // ==================================================================
@@ -404,6 +437,20 @@ public class RegistrationService {
     // ------------------------------------------------------------------
     // Helpers privados
     // ------------------------------------------------------------------
+
+    /**
+     * El nombre que se escribe en la bitacora: el apodo del competidor o el nombre
+     * del equipo, segun quien sea el participante.
+     *
+     * Es la misma decision que toma RegistrationMapper para participantName, y esta
+     * repetida porque la bitacora no tiene por que depender de un DTO: lo que se
+     * anota es texto plano que tiene que seguir siendo legible dentro de dos anos.
+     */
+    private String nombreDelParticipante(RaceRegistration registration) {
+        if (registration.getCompetitor() != null) return registration.getCompetitor().getNickname();
+        if (registration.getTeam() != null) return registration.getTeam().getName();
+        return "desconocido";
+    }
 
     private RaceRegistration findRegistrationOrThrow(UUID id) {
         return registrationRepository.findById(id)

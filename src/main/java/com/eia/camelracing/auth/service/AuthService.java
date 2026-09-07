@@ -1,8 +1,12 @@
 package com.eia.camelracing.auth.service;
 
+import com.eia.camelracing.audit.entity.AuditAction;
+import com.eia.camelracing.audit.service.AuditService;
 import com.eia.camelracing.auth.dto.ProfileResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
@@ -18,13 +22,20 @@ import java.util.Set;
  * SI hay una decision de negocio: cuales roles se le muestran al usuario y cuales
  * no (ver rolesDeLaAplicacion mas abajo).
  *
- * No lleva @Transactional ni repositorio: no hay nada que buscar en la base. Todo
- * lo que responde este servicio ya viene adentro del token, firmado por Keycloak.
- * Esa es justamente la gracia de un JWT: la aplicacion sabe quien sos sin
- * consultarle a nadie.
+ * No consulta ningun repositorio para responder: todo lo que devuelve ya viene
+ * adentro del token, firmado por Keycloak. Esa es justamente la gracia de un JWT,
+ * la aplicacion sabe quien sos sin consultarle a nadie.
+ *
+ * Lo unico que si escribe es la linea de la bitacora que deja constancia de que
+ * este usuario empezo a usar el sistema, y por eso el metodo lleva @Transactional.
+ * La explicacion de por que ese registro esta aca y no en un endpoint de login
+ * —que no existe— esta sobre getProfile().
  */
 @Service
+@RequiredArgsConstructor
 public class AuthService {
+
+    private final AuditService auditService;
 
     /**
      * Los roles que le importan a esta aplicacion.
@@ -52,7 +63,32 @@ public class AuthService {
      * del estandar OpenID Connect, no inventos de Keycloak. Cualquier otro
      * proveedor de identidad usaria los mismos.
      */
+    /**
+     * Quien sos, segun el token que mandaste.
+     *
+     * ACA SE REGISTRA EL "LOGIN" DE LA BITACORA, Y HAY QUE SER PRECISO CON ESO
+     * El enunciado pide que la auditoria registre el login. Esta aplicacion no hace
+     * login: la contrasena la valida Keycloak, que emite el token y lleva su propia
+     * bitacora de accesos. Lo unico que este backend puede ver es la primera vez que
+     * ese token se usa contra la API, y eso es exactamente esta llamada: la interfaz
+     * grafica pide /api/auth/profile apenas vuelve de Keycloak, para saber a quien
+     * mostrar y que botones ofrecer.
+     *
+     * O sea que la linea LOGIN de la bitacora significa "este usuario empezo a usar
+     * el sistema", no "este usuario escribio bien su contrasena". Es una diferencia
+     * que conviene tener clara al leer la auditoria: si alguien intenta entrar con
+     * una contrasena equivocada, eso no aparece aca, aparece en Keycloak.
+     *
+     * La consecuencia practica es que un frontend que llamara a este endpoint en
+     * cada pantalla llenaria la bitacora de lineas repetidas. Por eso se pide una
+     * sola vez, al arrancar la sesion.
+     */
+    @Transactional
     public ProfileResponse getProfile(Jwt jwt) {
+        auditService.registrar(AuditAction.LOGIN, "User", null,
+                "El usuario '" + jwt.getClaimAsString("preferred_username")
+                        + "' empezo a usar el sistema");
+
         return new ProfileResponse(
                 jwt.getSubject(),
                 jwt.getClaimAsString("preferred_username"),

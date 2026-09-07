@@ -6,6 +6,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -180,6 +181,42 @@ public class GlobalExceptionHandler {
 
         return construir(HttpStatus.NOT_FOUND,
                 "No existe el recurso " + request.getRequestURI(), request, null);
+    }
+
+    // ------------------------------------------------------------------
+    // 405 - el recurso existe, pero no con ese verbo
+    // ------------------------------------------------------------------
+
+    /**
+     * Se uso un verbo HTTP que ese endpoint no soporta.
+     *
+     * Sin este manejador, un POST a /api/audit —que es de solo lectura— caia en el
+     * catch-all y devolvia 500, o sea "el servidor se rompio". Y no se rompio nada:
+     * la ruta existe y esta funcionando perfectamente, lo que no existe es esa
+     * combinacion de verbo y ruta. Un 500 ahi manda a buscar un error que no esta.
+     *
+     * La cabecera Allow es parte del protocolo: le dice al cliente que verbos si
+     * puede usar contra esa ruta, en vez de dejarlo probando de a uno.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+
+        String permitidos = ex.getSupportedHttpMethods() == null
+                ? ""
+                : ex.getSupportedHttpMethods().toString();
+
+        ResponseEntity<ErrorResponse> respuesta = construir(HttpStatus.METHOD_NOT_ALLOWED,
+                "El metodo " + ex.getMethod() + " no esta permitido en " + request.getRequestURI()
+                        + (permitidos.isEmpty() ? "" : ". Metodos validos: " + permitidos),
+                request, null);
+
+        if (ex.getSupportedHttpMethods() == null || ex.getSupportedHttpMethods().isEmpty()) {
+            return respuesta;
+        }
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .allow(ex.getSupportedHttpMethods().toArray(new org.springframework.http.HttpMethod[0]))
+                .body(respuesta.getBody());
     }
 
     // ------------------------------------------------------------------
