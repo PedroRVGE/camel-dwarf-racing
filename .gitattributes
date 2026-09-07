@@ -1,3 +1,16 @@
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
+
+# Los guiones de shell van SIEMPRE con finales de linea de Unix.
+#
+# Sin esta regla, al clonar en Windows quedan con finales CRLF, y un guion asi
+# adentro de un contenedor de Linux falla de una forma que no se entiende. El
+# retorno de carro queda pegado al final de la primera linea, asi que el nucleo no
+# busca "/bin/sh" sino "/bin/sh" mas un caracter invisible, no lo encuentra, y
+# responde "not found" nombrando AL GUION. Parece que falta el archivo cuando en
+# realidad esta ahi y lo que no existe es el interprete.
+#
+# Le paso a frontend/docker/config.sh, que es el que arma la configuracion del
+# frontend cuando arranca el contenedor.
+*.sh text eol=lf

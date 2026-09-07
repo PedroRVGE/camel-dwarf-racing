@@ -1,0 +1,2447 @@
+{
+  "info": {
+    "name": "Liga EIA de Carreras",
+    "description": "La API completa del sistema de carreras de camellos contra enanos de la Universidad EIA.\n\n## Como usarla\n\nLevanta el sistema con `docker compose up -d` y aprieta **Run collection**. Pasa entera.\n\nLas carpetas siguen el ciclo de vida de una carrera y no la lista de recursos, y eso es a proposito: agrupada por recurso queda mas linda de leer y no se puede correr de arriba hacia abajo, porque una carrera no larga sin inscriptos aprobados ni termina sin resultados. Asi como esta, el orden de la coleccion **es** el flujo del sistema.\n\nLos pedidos que crean algo guardan el id en una variable, asi que se encadenan sin copiar y pegar identificadores.\n\nEsta pensada para correrse sobre una base recien levantada. Para volver a empezar de cero: `docker compose down -v && docker compose up -d`.\n\n## Los tres usuarios\n\nCambiando las variables `usuario` y `clave` se entra con distintos permisos:\n\n| usuario | clave | puede |\n|---|---|---|\n| admin | admin123 | todo, incluida la bitacora |\n| organizer | organizer123 | carreras, inscripciones y resultados |\n| viewer | viewer123 | solo leer |\n\nCon `organizer` fallan las carpetas 1 y 6, porque dar de alta competidores y equipos es del administrador. Eso no es un problema de la coleccion: es la seguridad funcionando.\n\n## Sobre la autenticacion\n\nLa API no emite tokens ni guarda contrasenas: los emite Keycloak y la aplicacion solo verifica la firma. Por eso el primer pedido de la coleccion va a Keycloak y no a la aplicacion.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Las fechas de las carreras se calculan en cada corrida.",
+          "//",
+          "// La validacion del backend rechaza una carrera programada en el pasado,",
+          "// asi que una fecha fija escrita a mano dejaria esta coleccion inservible",
+          "// apenas pase. Con esto la largada queda siempre a treinta dias y el cierre",
+          "// de inscripciones a veinticinco, que ademas respeta la regla de que el",
+          "// cierre tiene que ser anterior a la largada.",
+          "",
+          "const enDias = (dias) => {",
+          "    const f = new Date();",
+          "    f.setDate(f.getDate() + dias);",
+          "    // La API espera un LocalDateTime: sin zona horaria ni milisegundos.",
+          "    return f.toISOString().slice(0, 19);",
+          "};",
+          "",
+          "pm.collectionVariables.set('fechaDeLargada', enDias(30));",
+          "pm.collectionVariables.set('fechaDeCierre', enDias(25));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "description": "La API. Cambialo si moviste APP_PORT en el .env."
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8180",
+      "description": "Keycloak. Cambialo si moviste KEYCLOAK_PORT."
+    },
+    {
+      "key": "realm",
+      "value": "camelracing",
+      "description": "El realm que Keycloak importa al arrancar."
+    },
+    {
+      "key": "clienteKeycloak",
+      "value": "camelracing-swagger",
+      "description": "El cliente con el que se piden tokens para probar la API. El frontend usa otro (camelracing-web), con sus propias direcciones de retorno."
+    },
+    {
+      "key": "usuario",
+      "value": "admin",
+      "description": "admin, organizer o viewer."
+    },
+    {
+      "key": "clave",
+      "value": "admin123",
+      "description": "La contrasena del usuario de arriba."
+    },
+    {
+      "key": "token",
+      "value": "",
+      "description": "Lo completa el primer pedido."
+    },
+    {
+      "key": "tokenEspectador",
+      "value": "",
+      "description": "Lo usa la carpeta de errores para el 403."
+    },
+    {
+      "key": "competidorId",
+      "value": "",
+      "description": "El camello Byte."
+    },
+    {
+      "key": "enanoId",
+      "value": "",
+      "description": "El enano Null Pointer."
+    },
+    {
+      "key": "equipoId",
+      "value": "",
+      "description": "The Five Exceptions."
+    },
+    {
+      "key": "carreraId",
+      "value": "",
+      "description": "La carrera del recorrido."
+    },
+    {
+      "key": "inscripcionId",
+      "value": "",
+      "description": "La inscripcion del camello."
+    },
+    {
+      "key": "inscripcionDeEquipoId",
+      "value": "",
+      "description": "La inscripcion del equipo."
+    },
+    {
+      "key": "resultadoId",
+      "value": "",
+      "description": "El resultado del camello."
+    },
+    {
+      "key": "carreraDePruebaId",
+      "value": "",
+      "description": "La carrera de la carpeta 6."
+    },
+    {
+      "key": "inscripcionARechazarId",
+      "value": "",
+      "description": "La que se usa para el rechazo."
+    },
+    {
+      "key": "inscripcionADarDeBajaId",
+      "value": "",
+      "description": "La que se usa para la baja."
+    },
+    {
+      "key": "fechaDeLargada",
+      "value": "",
+      "description": "La calcula el script de la coleccion."
+    },
+    {
+      "key": "fechaDeCierre",
+      "value": "",
+      "description": "La calcula el script de la coleccion."
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Entrar",
+      "description": "Lo primero que hay que correr. Le pide un token a Keycloak y lo guarda, para que el resto de la coleccion lo use solo.\n\nEl pedido va a Keycloak y no a la aplicacion porque la API no emite tokens: solo verifica la firma de los que le llegan. Usa el flujo de contrasena directa, que el realm tiene habilitado unicamente para poder probar con herramientas como esta; la interfaz grafica no lo usa, manda el navegador a la pantalla de Keycloak.\n\nCambiando las variables `usuario` y `clave` se entra con otro rol, que es la forma de ver como cambian los permisos.",
+      "item": [
+        {
+          "name": "Pedir el token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "{{clienteKeycloak}}"
+                },
+                {
+                  "key": "username",
+                  "value": "{{usuario}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{clave}}"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "Devuelve el token del usuario configurado en las variables y lo deja guardado para el resto de la coleccion."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Keycloak devolvio un token', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.have.property('access_token');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('token', pm.response.json().access_token);",
+                  "",
+                  "// Los roles viajan adentro del token. Se escriben en la consola para no",
+                  "// tener que pegarlo en jwt.io cada vez que uno se pregunta con que permisos",
+                  "// esta corriendo.",
+                  "const carga = JSON.parse(atob(pm.response.json().access_token.split('.')[1]));",
+                  "console.log('Entraste como', carga.preferred_username,",
+                  "            'con roles', carga.realm_access.roles);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Pedir el token de un espectador",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "{{clienteKeycloak}}"
+                },
+                {
+                  "key": "username",
+                  "value": "viewer"
+                },
+                {
+                  "key": "password",
+                  "value": "viewer123"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "Guarda aparte un token de espectador. Lo usa la carpeta de errores para mostrar un 403 sin tener que salir y volver a entrar con otro usuario."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Keycloak devolvio un token', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.have.property('access_token');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('tokenEspectador', pm.response.json().access_token);",
+                  "",
+                  "// Los roles viajan adentro del token. Se escriben en la consola para no",
+                  "// tener que pegarlo en jwt.io cada vez que uno se pregunta con que permisos",
+                  "// esta corriendo.",
+                  "const carga = JSON.parse(atob(pm.response.json().access_token.split('.')[1]));",
+                  "console.log('Entraste como', carga.preferred_username,",
+                  "            'con roles', carga.realm_access.roles);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Ver mi perfil",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            },
+            "description": "Lo que la API reconoce de tu sesion: usuario, nombre, correo y roles. Sirve para confirmar que el token llego y que se interpreto bien del otro lado."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. El catalogo",
+      "description": "Competidores y equipos, que es lo que tiene que existir antes de poder armar una carrera. Todo lo de esta carpeta es exclusivo del administrador: un organizador arma carreras con la gente que ya existe, pero no da de alta gente.",
+      "item": [
+        {
+          "name": "Listar competidores",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors?page=0&size=10&sort=nickname,asc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Numero de pagina, base 0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Cuantos elementos por pagina"
+                },
+                {
+                  "key": "sort",
+                  "value": "nickname,asc",
+                  "description": "Campo y direccion"
+                },
+                {
+                  "key": "type",
+                  "value": "DWARF",
+                  "description": "DWARF, CAMEL o MEDIUM",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "ACTIVE",
+                  "description": "ACTIVE, INJURED, SUSPENDED o RETIRED",
+                  "disabled": true
+                },
+                {
+                  "key": "texto",
+                  "value": "martillo",
+                  "description": "Busca en nombre, apodo y pais",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "El listado con todo lo que pide el enunciado: busqueda, filtros, paginacion y ordenamiento. Los parametros apagados se pueden ir prendiendo de a uno para ver como cambia el resultado.\n\n`sort` viaja como 'campo,direccion' porque asi lo espera el Pageable de Spring Data."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear el camello Byte",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors"
+              ]
+            },
+            "description": "El camello de la demostracion que sugiere el enunciado. El apodo es unico en toda la liga: correrlo dos veces da 409, que es justamente lo que muestra la carpeta de errores.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Byte\",\n    \"nickname\": \"Byte\",\n    \"type\": \"CAMEL\",\n    \"dateOfBirth\": \"2019-04-12\",\n    \"weightKg\": 612.5,\n    \"heightCm\": 210.0,\n    \"countryOfOrigin\": \"Envigado\",\n    \"teamId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('competidorId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear el enano Null Pointer",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors"
+              ]
+            },
+            "description": "Uno de los cinco enanos de la demostracion. Va a entrar al equipo mas abajo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Null Pointer\",\n    \"nickname\": \"Null Pointer\",\n    \"type\": \"DWARF\",\n    \"dateOfBirth\": \"1998-11-03\",\n    \"weightKg\": 48.2,\n    \"heightCm\": 132.0,\n    \"countryOfOrigin\": \"Zuniga\",\n    \"teamId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('enanoId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar un competidor por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors/{{competidorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors",
+                "{{competidorId}}"
+              ]
+            },
+            "description": "Usa el id que dejo guardado la creacion de Byte. La respuesta trae la edad calculada y las estadisticas acumuladas."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actualizar un competidor",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors/{{competidorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors",
+                "{{competidorId}}"
+              ]
+            },
+            "description": "PUT reemplaza el recurso entero, asi que hay que mandar todos los campos. Para tocar un solo campo esta el PATCH de la carpeta 6.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Byte\",\n    \"nickname\": \"Byte\",\n    \"type\": \"CAMEL\",\n    \"dateOfBirth\": \"2019-04-12\",\n    \"weightKg\": 615.0,\n    \"heightCm\": 210.0,\n    \"countryOfOrigin\": \"Envigado\",\n    \"teamId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar equipos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams?page=0&size=10&sort=name,asc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "teams"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Numero de pagina, base 0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Cuantos elementos por pagina"
+                },
+                {
+                  "key": "sort",
+                  "value": "name,asc",
+                  "description": "Campo y direccion"
+                },
+                {
+                  "key": "status",
+                  "value": "ACTIVE",
+                  "description": "ACTIVE, INACTIVE o SUSPENDED",
+                  "disabled": true
+                },
+                {
+                  "key": "texto",
+                  "value": "exceptions",
+                  "description": "Busca en nombre y responsable",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Con los mismos filtros y paginacion."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear el equipo The Five Exceptions",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "teams"
+              ]
+            },
+            "description": "El equipo de la demostracion.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"The Five Exceptions\",\n    \"description\": \"Cinco enanos con una estrategia y varios discursos motivacionales\",\n    \"coach\": \"Mr. Abandonado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('equipoId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar el equipo por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{equipoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "teams",
+                "{{equipoId}}"
+              ]
+            },
+            "description": "El detalle trae la lista completa de integrantes."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actualizar el equipo",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{equipoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "teams",
+                "{{equipoId}}"
+              ]
+            },
+            "description": "Reemplaza los datos del equipo. Los integrantes no se tocan por aca: tienen sus propios endpoints.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"The Five Exceptions\",\n    \"description\": \"Cinco enanos, una estrategia y ahora tambien un plan B\",\n    \"coach\": \"Mr. Abandonado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agregar el enano al equipo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{equipoId}}/members/{{enanoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "teams",
+                "{{equipoId}}",
+                "members",
+                "{{enanoId}}"
+              ]
+            },
+            "description": "La relacion se maneja desde el EQUIPO y no desde el competidor, porque el equipo es el que tiene las reglas de cupo. Devuelve el equipo entero ya actualizado, asi que no hace falta volver a pedirlo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Armar la carrera",
+      "description": "Una carrera nace en DRAFT y avanza de a un estado: DRAFT, OPEN_FOR_REGISTRATION, CLOSED_FOR_REGISTRATION, IN_PROGRESS y COMPLETED. Desde cualquiera menos las dos ultimas se puede ir a CANCELLED.\n\nEl orden no es burocracia: cada estado habilita cosas distintas. Solo se puede anotar gente con las inscripciones abiertas, y solo se pueden cargar resultados con la carrera en curso. Saltearse un estado responde 409 enumerando los destinos validos.",
+      "item": [
+        {
+          "name": "Listar carreras",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races?page=0&size=10&sort=scheduledAt,asc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Numero de pagina, base 0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Cuantos elementos por pagina"
+                },
+                {
+                  "key": "sort",
+                  "value": "scheduledAt,asc",
+                  "description": "Proximas primero; ',desc' para el historial"
+                },
+                {
+                  "key": "status",
+                  "value": "OPEN_FOR_REGISTRATION",
+                  "description": "Estado de la carrera",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "MIXED",
+                  "description": "INDIVIDUAL, TEAM o MIXED",
+                  "disabled": true
+                },
+                {
+                  "key": "texto",
+                  "value": "palmas",
+                  "description": "Busca en nombre y lugares",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "La agenda, ordenada por fecha."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear la carrera",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races"
+              ]
+            },
+            "description": "La carrera mixta de un kilometro de la demostracion. Nace en DRAFT, asi que todavia no se puede anotar nadie.\n\nLas dos fechas las calcula el script de la coleccion en cada corrida. Una fecha fija dejaria esta coleccion inservible en un par de meses, porque la validacion del backend rechaza cualquier carrera programada en el pasado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Gran Premio Alto de Las Palmas\",\n    \"description\": \"Un kilometro de camello contra equipo de enanos\",\n    \"scheduledAt\": \"{{fechaDeLargada}}\",\n    \"startLocation\": \"Portico de la EIA\",\n    \"finishLocation\": \"Alto de Las Palmas\",\n    \"distanceMeters\": 1000,\n    \"maxParticipants\": 8,\n    \"type\": \"MIXED\",\n    \"registrationDeadline\": \"{{fechaDeCierre}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('carreraId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar la carrera por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}"
+              ]
+            },
+            "description": "El detalle agrega cuantos inscriptos aprobados y cuantos pendientes tiene."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actualizar la carrera",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}"
+              ]
+            },
+            "description": "Se puede editar mientras no haya largado. Despues, no: cambiarle la distancia a una carrera que ya se corrio invalidaria sus resultados.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Gran Premio Alto de Las Palmas\",\n    \"description\": \"Un kilometro de camello contra equipo de enanos, con premio\",\n    \"scheduledAt\": \"{{fechaDeLargada}}\",\n    \"startLocation\": \"Portico de la EIA\",\n    \"finishLocation\": \"Alto de Las Palmas\",\n    \"distanceMeters\": 1000,\n    \"maxParticipants\": 8,\n    \"type\": \"MIXED\",\n    \"registrationDeadline\": \"{{fechaDeCierre}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Abrir las inscripciones",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "status"
+              ]
+            },
+            "description": "De DRAFT a OPEN_FOR_REGISTRATION. Recien a partir de aca se puede anotar gente.\n\nEs PATCH y no PUT porque cambia un solo campo, y es un endpoint aparte porque el backend valida que la transicion sea legal.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"OPEN_FOR_REGISTRATION\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Inscripciones",
+      "description": "Anotar participantes y aprobarlos. Se anota un competidor O un equipo, nunca los dos: mandar los dos, o ninguno, da 400.\n\nLas direcciones estan partidas en dos familias. Para crear o listar hace falta saber de que carrera se habla, asi que cuelgan de la carrera; una vez creada, la inscripcion tiene identidad propia y se la trata por /api/registrations.\n\nAca se ven cuatro reglas de negocio que responden 409 con el motivo: competidor suspendido, inscripcion repetida, cupo lleno y plazo vencido.",
+      "item": [
+        {
+          "name": "Anotar al camello",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/registrations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "registrations"
+              ]
+            },
+            "description": "Queda en PENDING hasta que alguien la apruebe. El carril es opcional: si no se manda, se asigna uno libre al aprobar.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"competitorId\": \"{{competidorId}}\",\n    \"teamId\": null,\n    \"lane\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('inscripcionId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Anotar al equipo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/registrations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "registrations"
+              ]
+            },
+            "description": "El mismo endpoint, con teamId en lugar de competitorId.\n\nUn resultado pertenece a quien figure en la inscripcion, asi que la victoria va a ser del equipo y no se reparte entre sus integrantes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"competitorId\": null,\n    \"teamId\": \"{{equipoId}}\",\n    \"lane\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('inscripcionDeEquipoId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar las de la carrera",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/registrations?page=0&size=10&sort=lane,asc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "registrations"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Numero de pagina, base 0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Cuantos elementos por pagina"
+                },
+                {
+                  "key": "sort",
+                  "value": "lane,asc",
+                  "description": "Por carril"
+                },
+                {
+                  "key": "status",
+                  "value": "PENDING",
+                  "description": "PENDING, APPROVED, REJECTED o CANCELLED",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Con filtro por estado, para separar las que faltan revisar."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar una inscripcion por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/registrations/{{inscripcionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "registrations",
+                "{{inscripcionId}}"
+              ]
+            },
+            "description": "El detalle de una inscripcion, ya con el nombre del participante resuelto."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprobar la del camello",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/registrations/{{inscripcionId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "registrations",
+                "{{inscripcionId}}",
+                "approve"
+              ]
+            },
+            "description": "Asigna el carril si no venia elegido y verifica que no este ocupado. Es un endpoint propio y no un cambio de estado generico justamente porque tiene esa logica."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprobar la del equipo",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/registrations/{{inscripcionDeEquipoId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "registrations",
+                "{{inscripcionDeEquipoId}}",
+                "approve"
+              ]
+            },
+            "description": "La segunda aprobacion. Con dos participantes aprobados la carrera ya puede largar: con menos, el backend no la deja."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Correr la carrera",
+      "description": "El dia de la carrera: cerrar, largar, cargar los resultados y darla por terminada.\n\nCargar un resultado es la operacion con mas reglas del sistema: la carrera tiene que estar en curso, el participante tiene que estar aprobado, no puede haber dos primeros puestos y el tiempo tiene que ser coherente con el puesto. Ademas, cada carga recalcula las estadisticas del participante desde cero, nunca les suma uno: si se incrementaran, corregir un resultado dejaria la victoria vieja sumada para siempre.",
+      "item": [
+        {
+          "name": "Cerrar las inscripciones",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "status"
+              ]
+            },
+            "description": "De OPEN_FOR_REGISTRATION a CLOSED_FOR_REGISTRATION. Todavia se puede volver a abrir mientras la carrera no haya largado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"CLOSED_FOR_REGISTRATION\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Largar",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "status"
+              ]
+            },
+            "description": "A IN_PROGRESS, que es el unico estado en el que se cargan resultados.\n\nEl backend exige al menos dos participantes aprobados para largar. Con menos responde 409 diciendo cuantos tiene.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"IN_PROGRESS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Intentar terminarla sin resultados",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "status"
+              ]
+            },
+            "description": "Este pedido FALLA a proposito, y es el que mejor muestra como maneja los errores esta API.\n\nLa carrera no se puede dar por terminada mientras falte el resultado de algun participante aprobado. La respuesta es 409 y el mensaje dice cuantos faltan, en lugar de un 'operacion invalida' que obligaria a ir a leer el codigo para entender que paso.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"COMPLETED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rechaza terminarla con resultados pendientes', () => {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().message).to.include('faltan cargar');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cargar el resultado del camello",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "results"
+              ]
+            },
+            "description": "Byte llego primero. Un participante que TERMINO necesita puesto y tiempo.\n\nLos puntos salen del puesto: 10, 7, 5, 3 y 1 para los cinco primeros y cero para el resto.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"registrationId\": \"{{inscripcionId}}\",\n    \"status\": \"FINISHED\",\n    \"completionTimeSeconds\": 184,\n    \"penaltyTimeSeconds\": 0,\n    \"finalPosition\": 1,\n    \"notes\": \"Arranco cuando se sintio emocionalmente preparado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('resultadoId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cargar el abandono del equipo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "results"
+              ]
+            },
+            "description": "El caso de Tiny Docker, que paro a mitad de camino porque en su maquina funcionaba.\n\nVa sin puesto y sin tiempo, y eso no es un descuido: mandar cero diria que llego instantaneamente. La base tiene una restriccion que obliga a que un resultado FINISHED tenga los dos datos y cualquier otro no tenga ninguno.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"registrationId\": \"{{inscripcionDeEquipoId}}\",\n    \"status\": \"DID_NOT_FINISH\",\n    \"completionTimeSeconds\": null,\n    \"penaltyTimeSeconds\": 0,\n    \"finalPosition\": null,\n    \"notes\": \"Funcionaba en su maquina\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar los resultados",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/results?page=0&size=10&sort=finalPosition,asc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "results"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Numero de pagina, base 0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Cuantos elementos por pagina"
+                },
+                {
+                  "key": "sort",
+                  "value": "finalPosition,asc",
+                  "description": "Por puesto"
+                }
+              ]
+            },
+            "description": "Ordenados por puesto de llegada."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar un resultado por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/results/{{resultadoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "results",
+                "{{resultadoId}}"
+              ]
+            },
+            "description": "El detalle trae el tiempo total, que es el de carrera mas la penalizacion."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Corregir un resultado",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/results/{{resultadoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "results",
+                "{{resultadoId}}"
+              ]
+            },
+            "description": "Se corrige el cronometraje y se agrega una penalizacion de cinco segundos.\n\nCorregir vuelve a calcular las estadisticas desde cero, asi que no quedan rastros de la version anterior en los contadores.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"registrationId\": \"{{inscripcionId}}\",\n    \"status\": \"FINISHED\",\n    \"completionTimeSeconds\": 186,\n    \"penaltyTimeSeconds\": 5,\n    \"finalPosition\": 1,\n    \"notes\": \"Se corrigio el cronometraje\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dar la carrera por terminada",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraId}}",
+                "status"
+              ]
+            },
+            "description": "Ahora si: con el resultado de los dos participantes cargado, la misma transicion que fallaba mas arriba funciona. COMPLETED es un estado final, no se sale de ahi.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"COMPLETED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ahora si la acepta', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Consultas",
+      "description": "Lo que se mira despues de que corrieron: la clasificacion y la bitacora.",
+      "item": [
+        {
+          "name": "Posiciones de competidores",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/standings/competitors?page=0&size=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "standings",
+                "competitors"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Numero de pagina, base 0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Cuantos elementos por pagina"
+                }
+              ]
+            },
+            "description": "La clasificacion individual. Byte tiene que aparecer con 10 puntos.\n\nNo acepta `sort`: el orden de una tabla de posiciones no lo elige el que consulta, lo fija la consulta (puntos, despues victorias, despues nombre). Una tabla de posiciones ordenada por otra cosa deja de ser una tabla de posiciones.\n\nAparecen todos los que compitieron, incluidos los que sumaron cero: aparecer con cero significa que corrio y no puntuo, que no es lo mismo que no correr."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Posiciones de equipos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/standings/teams?page=0&size=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "standings",
+                "teams"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Numero de pagina, base 0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Cuantos elementos por pagina"
+                }
+              ]
+            },
+            "description": "La clasificacion por equipos, sobre las inscripciones de equipo. Es una consulta independiente de la anterior sobre las mismas carreras."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bitacora",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/audit?page=0&size=10&sort=occurredAt,desc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Numero de pagina, base 0"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Cuantos elementos por pagina"
+                },
+                {
+                  "key": "sort",
+                  "value": "occurredAt,desc",
+                  "description": "Lo mas reciente primero"
+                },
+                {
+                  "key": "username",
+                  "value": "admin",
+                  "description": "Usuario exacto, sin distinguir mayusculas",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "RACE_STATUS_CHANGED",
+                  "description": "Una de las 20 acciones",
+                  "disabled": true
+                },
+                {
+                  "key": "entityType",
+                  "value": "Race",
+                  "description": "Race, Competitor, Team, RaceRegistration...",
+                  "disabled": true
+                },
+                {
+                  "key": "desde",
+                  "value": "2026-01-01T00:00:00",
+                  "description": "Desde esta fecha y hora",
+                  "disabled": true
+                },
+                {
+                  "key": "hasta",
+                  "value": "2026-12-31T23:59:59",
+                  "description": "Hasta esta fecha y hora",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "La auditoria, solo para el administrador: con cualquier otro rol responde 403. Aca tienen que estar todas las operaciones que hizo esta coleccion.\n\nEs de solo lectura. Las filas las escribe el backend cuando alguien cambia algo, y no hay forma de escribir en ella desde afuera: un registro que se puede editar desde la misma aplicacion que registra no sirve como registro.\n\nLos filtros de fecha llevan hora porque el campo es un LocalDateTime, y los dos limites son inclusive."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Bajas y caminos alternativos",
+      "description": "Lo que queda afuera del recorrido feliz: rechazar una inscripcion, darla de baja, cancelar una carrera, retirar un competidor y desactivar un equipo.\n\nVa al final por una razon concreta: cada una de estas operaciones deja algo inutilizable para los pedidos de mas arriba. Un competidor retirado no se puede inscribir, una carrera cancelada no recibe resultados.\n\nNinguna borra nada. Lo que la API expone como baja es siempre un cambio de estado: RETIRED, INACTIVE o CANCELLED. No hay un solo DELETE de verdad en toda la aplicacion, y el motivo es el historial: si se borrara un competidor habria que borrar sus resultados, y con eso cambiarian los puestos de carreras que ya se corrieron.",
+      "item": [
+        {
+          "name": "Crear una carrera de prueba",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races"
+              ]
+            },
+            "description": "Hace falta una carrera aparte: la del recorrido ya esta terminada, y de COMPLETED no se sale.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Carrera de prueba\",\n    \"description\": \"Para mostrar los caminos alternativos\",\n    \"scheduledAt\": \"{{fechaDeLargada}}\",\n    \"startLocation\": \"Portico de la EIA\",\n    \"finishLocation\": \"Alto de Las Palmas\",\n    \"distanceMeters\": 1000,\n    \"maxParticipants\": 8,\n    \"type\": \"MIXED\",\n    \"registrationDeadline\": \"{{fechaDeCierre}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('carreraDePruebaId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Abrir sus inscripciones",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraDePruebaId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraDePruebaId}}",
+                "status"
+              ]
+            },
+            "description": "Para poder anotar a alguien y despues rechazarlo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"OPEN_FOR_REGISTRATION\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Anotar a alguien para rechazarlo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraDePruebaId}}/registrations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraDePruebaId}}",
+                "registrations"
+              ]
+            },
+            "description": "Una inscripcion nueva, en PENDING.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"competitorId\": \"{{competidorId}}\",\n    \"teamId\": null,\n    \"lane\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('inscripcionARechazarId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazar la inscripcion",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/registrations/{{inscripcionARechazarId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "registrations",
+                "{{inscripcionARechazarId}}",
+                "reject"
+              ]
+            },
+            "description": "El motivo es obligatorio: queda guardado en la inscripcion y en la bitacora, asi que conviene que se entienda solo. Mandarlo vacio da 400.\n\nRechazar es el camino alternativo a aprobar, no el paso siguiente: una inscripcion ya aprobada no se puede rechazar.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"reason\": \"El equipo no llego al minimo de integrantes activos\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Anotar a alguien para darlo de baja",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraDePruebaId}}/registrations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraDePruebaId}}",
+                "registrations"
+              ]
+            },
+            "description": "Otra inscripcion, esta vez del enano.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"competitorId\": \"{{enanoId}}\",\n    \"teamId\": null,\n    \"lane\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('la API acepto el pedido', () => {",
+                  "    pm.expect(pm.response.code, 'codigo de respuesta').to.be.below(300);",
+                  "    pm.expect(pm.response.json()).to.have.property('id');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('inscripcionADarDeBajaId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dar de baja la inscripcion",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/registrations/{{inscripcionADarDeBajaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "registrations",
+                "{{inscripcionADarDeBajaId}}"
+              ]
+            },
+            "description": "Pasa a CANCELLED y su lugar vuelve a estar disponible para otro participante. Devuelve 204 sin cuerpo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 204 sin cuerpo', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancelar la carrera de prueba",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/races/{{carreraDePruebaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races",
+                "{{carreraDePruebaId}}"
+              ]
+            },
+            "description": "El DELETE de una carrera la pasa a CANCELLED. No se puede reabrir, y las inscripciones quedan sin efecto.\n\nQueda asentado en la bitacora como RACE_CANCELLED y no como un cambio de estado cualquiera, porque no es lo mismo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 204 sin cuerpo', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar el estado de un competidor",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors/{{enanoId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors",
+                "{{enanoId}}",
+                "status"
+              ]
+            },
+            "description": "PATCH y no PUT porque toca un solo campo. Un competidor lesionado o suspendido no se puede inscribir en carreras nuevas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"INJURED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Retirar un competidor",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors/{{enanoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors",
+                "{{enanoId}}"
+              ]
+            },
+            "description": "Pasa a RETIRED. Sus resultados anteriores se conservan y siguen contando en la tabla de posiciones: un resultado historico no cambia porque alguien se retire."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 204 sin cuerpo', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quitar un integrante del equipo",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{equipoId}}/members/{{enanoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "teams",
+                "{{equipoId}}",
+                "members",
+                "{{enanoId}}"
+              ]
+            },
+            "description": "El competidor no se borra: deja de pertenecer al equipo y pasa a competir individualmente."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar el estado del equipo",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{equipoId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "teams",
+                "{{equipoId}}",
+                "status"
+              ]
+            },
+            "description": "Un equipo suspendido no puede inscribirse en carreras nuevas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"SUSPENDED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('respondio bien', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Desactivar el equipo",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/teams/{{equipoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "teams",
+                "{{equipoId}}"
+              ]
+            },
+            "description": "Pasa a INACTIVE y conserva integrantes e historial."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 204 sin cuerpo', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Errores que la API maneja",
+      "description": "Cuatro errores, cada uno con su codigo correcto. Todos devuelven la misma forma de respuesta —timestamp, status, error, message y path, mas validationErrors cuando el problema es de validacion— y ninguno expone una traza ni termina en un 500.\n\nEl enunciado pide demostrar al menos dos errores manejados. Con el 409 de la carpeta 4, que rechaza terminar una carrera con resultados pendientes, son cinco.",
+      "item": [
+        {
+          "name": "401 sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors"
+              ]
+            },
+            "description": "Sin credenciales: 401, que quiere decir 'no se quien sos'.\n\nEs distinto del 403 de abajo y la diferencia importa: una interfaz que los confunde manda al usuario a loguearse de nuevo cuando en realidad ya esta logueado y lo que le falta es un rol.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 un espectador quiere crear una carrera",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEspectador}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/races",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "races"
+              ]
+            },
+            "description": "El espectador esta autenticado y aun asi no puede: por eso 403 y no 401.\n\nNecesita que antes haya corrido 'Pedir el token de un espectador', en la carpeta 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Carrera que no va a existir\",\n    \"description\": \"Un kilometro de camello contra equipo de enanos\",\n    \"scheduledAt\": \"{{fechaDeLargada}}\",\n    \"startLocation\": \"Portico de la EIA\",\n    \"finishLocation\": \"Alto de Las Palmas\",\n    \"distanceMeters\": 1000,\n    \"maxParticipants\": 8,\n    \"type\": \"MIXED\",\n    \"registrationDeadline\": \"{{fechaDeCierre}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 un id que no existe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors/00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "Un id inexistente es una situacion normal —un enlace viejo, un dato dado de baja—, no un error del servidor. Tiene que ser 404 y no 500, porque el que lo recibe necesita distinguir 'no esta' de 'se rompio algo'."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 datos invalidos",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors"
+              ]
+            },
+            "description": "Peso negativo, altura en cero, nombre demasiado corto, apodo vacio y fecha de nacimiento en el futuro, todo junto.\n\nLa respuesta trae `validationErrors` con el nombre de cada campo y su mensaje, que es exactamente lo que necesita un formulario para marcar el casillero equivocado en lugar de mostrar un cartel generico arriba.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"X\",\n    \"nickname\": \"\",\n    \"type\": \"CAMEL\",\n    \"dateOfBirth\": \"2099-01-01\",\n    \"weightKg\": -5,\n    \"heightCm\": 0,\n    \"countryOfOrigin\": \"\",\n    \"teamId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 400 con el detalle por campo', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    const errores = pm.response.json().validationErrors;",
+                  "    pm.expect(errores, 'validationErrors').to.be.an('object');",
+                  "    pm.expect(errores).to.have.property('weightKg');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 apodo repetido",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/competitors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "competitors"
+              ]
+            },
+            "description": "El apodo es unico en toda la liga, asi que crear otro Byte da 409.\n\nLa regla esta implementada dos veces a proposito: el servicio la verifica para poder dar un mensaje entendible, y la base tiene una restriccion unica que la garantiza aunque dos pedidos lleguen exactamente al mismo tiempo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Otro camello cualquiera\",\n    \"nickname\": \"Byte\",\n    \"type\": \"CAMEL\",\n    \"dateOfBirth\": \"2020-01-01\",\n    \"weightKg\": 600.0,\n    \"heightCm\": 205.0,\n    \"countryOfOrigin\": \"Envigado\",\n    \"teamId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('devuelve 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
