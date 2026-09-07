@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Liga EIA de Carreras</title>
+    <meta name="description" content="Sistema de gestion de carreras de camellos contra enanos de la Universidad EIA" />
+
+    <!--
+        LA CONFIGURACION SE CARGA ANTES QUE LA APLICACION, Y NO ES UN DETALLE
+
+        Vite reemplaza las variables de entorno en el momento de COMPILAR, no en el
+        de ejecutar. Si la direccion de la API viniera por ese camino, quedaria
+        escrita adentro del paquete de JavaScript y cambiarla exigiria volver a
+        construir la imagen de Docker entera.
+
+        Por eso la direccion de la API y la de Keycloak se leen de este archivo
+        suelto, que el contenedor reescribe al arrancar a partir de sus variables
+        de entorno (frontend/docker/config.sh). La misma imagen sirve para
+        cualquier entorno; solo cambia el .env.
+    -->
+    <script src="/config.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+    <!-- React se monta aca adentro. Todo lo que se ve en pantalla lo dibuja el. -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

@@ -1,8 +1,9 @@
 # =============================================================================
 #  docker compose up -d
 # =============================================================================
-#  Levanta el sistema entero: la base, el servidor de identidad y la API.
-#  El frontend se agrega mas adelante, en su propio servicio.
+#  Levanta el sistema entero: la base, el servidor de identidad, la API y la
+#  interfaz grafica. Son cuatro contenedores en una red aislada, y con este solo
+#  comando queda todo funcionando.
 #
 #  La clave "version" ya no se usa en Compose V2 (genera un warning al levantar).
 #
@@ -65,7 +66,12 @@ services:
       # De donde acepta requests del navegador (CORS). El frontend corre en otro
       # puerto, asi que para el navegador es otro origen y sin esto el navegador
       # bloquea todas las llamadas antes de que salgan.
-      - CORS_ALLOWED_ORIGINS=http://localhost:${WEB_PORT:-3000}
+      #
+      # Son dos origenes: el del contenedor del frontend y el de "npm run dev".
+      # El segundo esta para poder trabajar en la interfaz con recarga automatica
+      # contra este mismo stack, sin tener que reconstruir la imagen en cada
+      # cambio. Los dos estan declarados en el realm de Keycloak.
+      - CORS_ALLOWED_ORIGINS=http://localhost:${WEB_PORT:-3000},http://localhost:5173
     healthcheck:
       # Consulta /actuator/health, que responde UP recien cuando el contexto de
       # Spring termino de levantar y la base esta conectada. Sin esto, Docker
@@ -87,6 +93,48 @@ services:
       # migraciones antes de que la app responda. Los fallos dentro de esta
       # ventana no cuentan para los retries.
       start_period: 40s
+    networks:
+      - camelracing-net
+
+  # ===========================================================================
+  # EL FRONTEND
+  # ===========================================================================
+  # La interfaz grafica: una aplicacion de una sola pagina hecha con React y
+  # servida por nginx. No es un servidor de aplicaciones: adentro del contenedor
+  # solo hay archivos estaticos y nginx. Todo el trabajo lo hace el navegador,
+  # que le pega a la API con el token que le dio Keycloak.
+  web:
+    build: ./frontend
+    container_name: camelracing-web
+    restart: unless-stopped
+    ports:
+      # A la izquierda el puerto de tu maquina, a la derecha el 80 de nginx
+      # adentro del contenedor.
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      app:
+        # service_healthy y no service_started: si el frontend arrancara antes que
+        # la API, la primera pantalla que ve el usuario es un error de conexion.
+        # Esperar unos segundos mas es preferible a eso.
+        condition: service_healthy
+    environment:
+      # ESTAS TRES DIRECCIONES SON LAS QUE VE EL NAVEGADOR, NO LA RED DE DOCKER.
+      # Es el punto que mas confunde de esta configuracion: el frontend no corre
+      # adentro del contenedor, corre en la computadora del usuario. Poner
+      # "http://app:8080" seria correcto para un pedido hecho DESDE el
+      # contenedor, y completamente inutil para el navegador, que no conoce ese
+      # nombre y fallaria con un error de conexion.
+      #
+      # El guion docker/config.sh toma estas variables al arrancar y escribe con
+      # ellas el archivo /config.js que carga la pagina. Por eso la misma imagen
+      # sirve para cualquier entorno: no hay ninguna direccion escrita adentro
+      # del JavaScript.
+      - API_BASE_URL=${API_BASE_URL:-http://localhost:8080}
+      - KEYCLOAK_PUBLIC_URL=http://localhost:${KEYCLOAK_PORT:-8180}
+      - KEYCLOAK_REALM=camelracing
+      # Un cliente distinto del de Swagger: este tiene registradas las direcciones
+      # de retorno del frontend (3000 y 5173), y el otro las de la API.
+      - KEYCLOAK_CLIENT_ID=camelracing-web
     networks:
       - camelracing-net
 

@@ -35,8 +35,15 @@ frontend/.vite/
 frontend/coverage/
 npm-debug.log*
 yarn-error.log*
-# El .env del frontend lleva la URL de la API y el realm de Keycloak. No son
-# secretos, pero cambian por maquina; la plantilla es frontend/.env.example.
+# El frontend NO usa archivos .env, y vale aclarar por que: las variables de
+# Vite se reemplazan al COMPILAR, asi que quedarian escritas adentro del paquete
+# de JavaScript y la imagen de Docker solo serviria para el entorno en el que se
+# construyo. En su lugar, las direcciones se leen en tiempo de ejecucion desde
+# frontend/public/config.js, que el contenedor reescribe al arrancar con las
+# variables del compose (ver frontend/docker/config.sh).
+#
+# Las reglas quedan igual por si alguien agrega un .env mas adelante: es
+# exactamente el archivo que no hay que subir.
 frontend/.env
 frontend/.env.local
 frontend/.env.*.local

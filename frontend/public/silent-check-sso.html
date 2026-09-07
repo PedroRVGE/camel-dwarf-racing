@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+<!--
+    Pagina auxiliar del "check-sso silencioso" de Keycloak.
+
+    Sirve para una sola cosa: al abrir la aplicacion, Keycloak carga esta pagina
+    dentro de un marco invisible para preguntar, sin sacar al usuario de donde
+    esta, si ya tiene una sesion abierta. Keycloak responde a ese marco con los
+    datos en la direccion, y esta linea se los reenvia a la ventana principal.
+
+    Si esta pagina faltara, la aplicacion no se rompe: simplemente no reconoceria
+    una sesion ya iniciada y pediria login de nuevo en cada recarga.
+-->
+<body>
+    <script>parent.postMessage(location.href, location.origin);</script>
+</body>
+</html>
