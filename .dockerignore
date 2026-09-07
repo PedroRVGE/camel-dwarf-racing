@@ -54,6 +54,9 @@ docker-compose*.yml
 HELP.md
 README.md
 *.md
+# El diagrama entidad-relacion y la coleccion de Postman son documentacion: se
+# leen desde el repositorio, no desde adentro de la imagen.
+docs/
 
 ### Logs y temporales ###
 *.log
