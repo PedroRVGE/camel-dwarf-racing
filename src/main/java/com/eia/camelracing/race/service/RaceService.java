@@ -1,5 +1,7 @@
 package com.eia.camelracing.race.service;
 
+import com.eia.camelracing.audit.entity.AuditAction;
+import com.eia.camelracing.audit.service.AuditService;
 import com.eia.camelracing.common.dto.PageResponse;
 import com.eia.camelracing.common.exception.BusinessRuleException;
 import com.eia.camelracing.common.security.CurrentUser;
@@ -12,6 +14,7 @@ import com.eia.camelracing.race.mapper.RaceMapper;
 import com.eia.camelracing.race.repository.IRaceRepository;
 import com.eia.camelracing.registration.entity.RegistrationStatus;
 import com.eia.camelracing.registration.repository.IRaceRegistrationRepository;
+import com.eia.camelracing.result.repository.IRaceResultRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -39,7 +42,9 @@ public class RaceService {
 
     private final IRaceRepository raceRepository;
     private final IRaceRegistrationRepository registrationRepository;
+    private final IRaceResultRepository resultRepository;
     private final CurrentUser currentUser;
+    private final AuditService auditService;
 
     /**
      * El minimo de participantes para que una carrera pueda largar.
@@ -92,6 +97,10 @@ public class RaceService {
     public RaceResponse createRace(RaceRequest request) {
         Race race = RaceMapper.toEntity(request, currentUser.username());
         race = raceRepository.save(race);
+
+        auditService.registrar(AuditAction.RACE_CREATED, "Race", race.getId(),
+                "Se creo la carrera '" + race.getName() + "'");
+
         // Recien creada no tiene inscripciones, asi que los conteos son cero y no
         // hace falta ir a preguntarlos a la base.
         return RaceMapper.toResponse(race, 0, 0);
@@ -124,8 +133,18 @@ public class RaceService {
                     "La carrera ya largo: no se pueden cambiar sus condiciones");
         }
 
+        String antes = "nombre=" + race.getName() + ", fecha=" + race.getScheduledAt()
+                + ", distancia=" + race.getDistanceMeters() + ", cupo=" + race.getMaxParticipants();
+
         RaceMapper.updateEntity(race, request);
         race = raceRepository.save(race);
+
+        auditService.registrar(AuditAction.RACE_UPDATED, "Race", race.getId(),
+                "Se editaron los datos de la carrera '" + race.getName() + "'",
+                antes,
+                "nombre=" + race.getName() + ", fecha=" + race.getScheduledAt()
+                        + ", distancia=" + race.getDistanceMeters() + ", cupo=" + race.getMaxParticipants());
+
         return RaceMapper.toResponse(race, aprobadas(id), pendientes(id));
     }
 
@@ -175,14 +194,19 @@ public class RaceService {
         if (nuevoEstado == RaceStatus.IN_PROGRESS) {
             validarQuePuedeLargar(race);
         }
-
-        // PENDIENTE (llega con el modulo de resultados): el enunciado pide que "a
-        // race cannot be completed without official results". Ese control necesita
-        // consultar la tabla de resultados, que todavia no existe, y se agrega aca
-        // junto con ella.
+        if (nuevoEstado == RaceStatus.COMPLETED) {
+            validarQuePuedeDarsePorTerminada(race);
+        }
 
         race.setStatus(nuevoEstado);
         race = raceRepository.save(race);
+
+        auditService.registrar(
+                nuevoEstado == RaceStatus.CANCELLED ? AuditAction.RACE_CANCELLED : AuditAction.RACE_STATUS_CHANGED,
+                "Race", race.getId(),
+                "Se cambio el estado de la carrera '" + race.getName() + "'",
+                "status=" + actual, "status=" + nuevoEstado);
+
         return RaceMapper.toResponse(race, aprobadas(id), pendientes(id));
     }
 
@@ -210,8 +234,13 @@ public class RaceService {
                     "La carrera esta " + race.getStatus() + " y ya no se puede cancelar");
         }
 
+        RaceStatus anterior = race.getStatus();
         race.setStatus(RaceStatus.CANCELLED);
         raceRepository.save(race);
+
+        auditService.registrar(AuditAction.RACE_CANCELLED, "Race", race.getId(),
+                "Se cancelo la carrera '" + race.getName() + "'",
+                "status=" + anterior, "status=" + RaceStatus.CANCELLED);
     }
 
     // ------------------------------------------------------------------
@@ -232,6 +261,34 @@ public class RaceService {
             throw new BusinessRuleException(
                     "La carrera necesita al menos " + MINIMO_PARA_LARGAR
                             + " participantes aprobados para largar, y tiene " + confirmados);
+        }
+    }
+
+    /**
+     * "A race cannot be completed without official results."
+     *
+     * QUE SIGNIFICA "SIN RESULTADOS OFICIALES"
+     * La lectura minima seria "que haya al menos un resultado cargado". Se
+     * implementa la exigente: TODOS los participantes aprobados tienen que tener
+     * resultado. Con la lectura minima, una carrera de ocho se podria dar por
+     * terminada con un solo tiempo cargado, y los otros siete no figurarian en la
+     * clasificacion ni siquiera como abandonos: quedarian como si nunca hubieran
+     * corrido. Justamente el tipo de historia falsa que el resto del modulo se
+     * ocupa de impedir.
+     *
+     * No hace falta pedir aparte que haya al menos un resultado: para llegar a
+     * IN_PROGRESS ya hicieron falta dos participantes aprobados, asi que exigir que
+     * ninguno quede sin resultado garantiza que haya por lo menos dos.
+     *
+     * Y si alguien efectivamente no corrio, para eso esta DID_NOT_START: dejarlo
+     * asentado es un dato, no un tramite.
+     */
+    private void validarQuePuedeDarsePorTerminada(Race race) {
+        long faltantes = resultRepository.aprobadasSinResultado(race.getId());
+        if (faltantes > 0) {
+            throw new BusinessRuleException(
+                    "La carrera no se puede dar por terminada: faltan cargar " + faltantes
+                            + " resultado(s). Los participantes que no corrieron van como DID_NOT_START");
         }
     }
 

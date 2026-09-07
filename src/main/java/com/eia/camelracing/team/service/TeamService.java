@@ -1,5 +1,7 @@
 package com.eia.camelracing.team.service;
 
+import com.eia.camelracing.audit.entity.AuditAction;
+import com.eia.camelracing.audit.service.AuditService;
 import com.eia.camelracing.common.dto.PageResponse;
 import com.eia.camelracing.common.exception.BusinessRuleException;
 import com.eia.camelracing.competitor.entity.Competitor;
@@ -42,6 +44,7 @@ public class TeamService {
 
     private final ITeamRepository teamRepository;
     private final ICompetitorRepository competitorRepository;
+    private final AuditService auditService;
 
     /**
      * El maximo de integrantes por equipo.
@@ -95,8 +98,12 @@ public class TeamService {
             throw new BusinessRuleException(
                     "Ya existe un equipo llamado '" + request.name() + "'");
         }
-        Team team = TeamMapper.toEntity(request);
-        return TeamMapper.toResponse(teamRepository.save(team));
+        Team team = teamRepository.save(TeamMapper.toEntity(request));
+
+        auditService.registrar(AuditAction.TEAM_CREATED, "Team", team.getId(),
+                "Se creo el equipo '" + team.getName() + "'");
+
+        return TeamMapper.toResponse(team);
     }
 
     /**
@@ -116,21 +123,37 @@ public class TeamService {
             throw new BusinessRuleException(
                     "Ya existe otro equipo llamado '" + request.name() + "'");
         }
+        String antes = "nombre=" + team.getName() + ", responsable=" + team.getCoach();
+
         TeamMapper.updateEntity(team, request);
-        return TeamMapper.toResponse(teamRepository.save(team));
+        team = teamRepository.save(team);
+
+        auditService.registrar(AuditAction.TEAM_UPDATED, "Team", team.getId(),
+                "Se editaron los datos del equipo '" + team.getName() + "'",
+                antes, "nombre=" + team.getName() + ", responsable=" + team.getCoach());
+
+        return TeamMapper.toResponse(team);
     }
 
     /** Cambia el estado: suspender un equipo, reactivarlo, darlo de baja. */
     @Transactional
     public TeamResponse changeStatus(UUID id, TeamStatus nuevoEstado) {
         Team team = findTeamOrThrow(id);
+        TeamStatus anterior = team.getStatus();
+
         team.setStatus(nuevoEstado);
         // Dar de baja por PATCH tiene que liberar a los integrantes igual que
         // hacerlo por DELETE, o quedaria una forma de dejarlos atrapados.
         if (nuevoEstado == TeamStatus.INACTIVE) {
             liberarIntegrantes(team);
         }
-        return TeamMapper.toResponse(teamRepository.save(team));
+        team = teamRepository.save(team);
+
+        auditService.registrar(AuditAction.TEAM_STATUS_CHANGED, "Team", team.getId(),
+                "Se cambio el estado del equipo '" + team.getName() + "'",
+                "status=" + anterior, "status=" + nuevoEstado);
+
+        return TeamMapper.toResponse(team);
     }
 
     // ------------------------------------------------------------------
@@ -159,9 +182,15 @@ public class TeamService {
     @Transactional
     public void deleteTeam(UUID id) {
         Team team = findTeamOrThrow(id);
+        TeamStatus anterior = team.getStatus();
+
         team.setStatus(TeamStatus.INACTIVE);
         liberarIntegrantes(team);
         teamRepository.save(team);
+
+        auditService.registrar(AuditAction.TEAM_DEACTIVATED, "Team", team.getId(),
+                "Se dio de baja el equipo '" + team.getName() + "' y se liberaron sus integrantes",
+                "status=" + anterior, "status=" + TeamStatus.INACTIVE);
     }
 
     // ------------------------------------------------------------------
@@ -178,6 +207,10 @@ public class TeamService {
         Team team = prepararIngreso(teamId, competitor);
         competitor.setTeam(team);
         competitorRepository.save(competitor);
+
+        auditService.registrar(AuditAction.TEAM_MEMBER_ADDED, "Team", teamId,
+                "Se sumo a '" + competitor.getNickname() + "' al equipo '" + team.getName() + "'");
+
         // Se relee el equipo para que la respuesta traiga la lista de integrantes
         // ya actualizada: el objeto que quedo en memoria todavia tiene la lista
         // como estaba antes, porque el dueno de la relacion es Competitor.
@@ -203,6 +236,10 @@ public class TeamService {
 
         competitor.setTeam(null);
         competitorRepository.save(competitor);
+
+        auditService.registrar(AuditAction.TEAM_MEMBER_REMOVED, "Team", teamId,
+                "Se saco a '" + competitor.getNickname() + "' del equipo '" + team.getName() + "'");
+
         return TeamMapper.toResponse(findTeamOrThrow(teamId));
     }
 

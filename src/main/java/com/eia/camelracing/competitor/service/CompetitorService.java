@@ -1,5 +1,7 @@
 package com.eia.camelracing.competitor.service;
 
+import com.eia.camelracing.audit.entity.AuditAction;
+import com.eia.camelracing.audit.service.AuditService;
 import com.eia.camelracing.common.dto.PageResponse;
 import com.eia.camelracing.common.exception.BusinessRuleException;
 import com.eia.camelracing.competitor.dto.CompetitorRequest;
@@ -35,6 +37,7 @@ public class CompetitorService {
 
     private final ICompetitorRepository competitorRepository;
     private final TeamService teamService;
+    private final AuditService auditService;
 
     // ------------------------------------------------------------------
     // CONSULTAR
@@ -96,7 +99,12 @@ public class CompetitorService {
         Team team = teamService.prepararIngreso(request.teamId(), competitor);
         competitor.setTeam(team);
 
-        return CompetitorMapper.toResponse(competitorRepository.save(competitor));
+        competitor = competitorRepository.save(competitor);
+
+        auditService.registrar(AuditAction.COMPETITOR_CREATED, "Competitor", competitor.getId(),
+                "Se dio de alta al competidor '" + competitor.getNickname() + "'");
+
+        return CompetitorMapper.toResponse(competitor);
     }
 
     // ------------------------------------------------------------------
@@ -117,10 +125,20 @@ public class CompetitorService {
         Competitor competitor = findCompetitorOrThrow(id);
         validarApodoLibre(request.nickname(), id);
 
+        String antes = "apodo=" + competitor.getNickname()
+                + ", equipo=" + (competitor.getTeam() == null ? null : competitor.getTeam().getName());
+
         Team team = teamService.prepararIngreso(request.teamId(), competitor);
         CompetitorMapper.updateEntity(competitor, request, team);
+        competitor = competitorRepository.save(competitor);
 
-        return CompetitorMapper.toResponse(competitorRepository.save(competitor));
+        auditService.registrar(AuditAction.COMPETITOR_UPDATED, "Competitor", competitor.getId(),
+                "Se editaron los datos del competidor '" + competitor.getNickname() + "'",
+                antes,
+                "apodo=" + competitor.getNickname()
+                        + ", equipo=" + (competitor.getTeam() == null ? null : competitor.getTeam().getName()));
+
+        return CompetitorMapper.toResponse(competitor);
     }
 
     /**
@@ -142,8 +160,16 @@ public class CompetitorService {
     @Transactional
     public CompetitorResponse changeStatus(UUID id, CompetitorStatus nuevoEstado) {
         Competitor competitor = findCompetitorOrThrow(id);
+        CompetitorStatus anterior = competitor.getStatus();
+
         competitor.setStatus(nuevoEstado);
-        return CompetitorMapper.toResponse(competitorRepository.save(competitor));
+        competitor = competitorRepository.save(competitor);
+
+        auditService.registrar(AuditAction.COMPETITOR_STATUS_CHANGED, "Competitor", competitor.getId(),
+                "Se cambio el estado del competidor '" + competitor.getNickname() + "'",
+                "status=" + anterior, "status=" + nuevoEstado);
+
+        return CompetitorMapper.toResponse(competitor);
     }
 
     // ------------------------------------------------------------------
@@ -173,8 +199,14 @@ public class CompetitorService {
     @Transactional
     public void deleteCompetitor(UUID id) {
         Competitor competitor = findCompetitorOrThrow(id);
+        CompetitorStatus anterior = competitor.getStatus();
+
         competitor.setStatus(CompetitorStatus.RETIRED);
         competitorRepository.save(competitor);
+
+        auditService.registrar(AuditAction.COMPETITOR_RETIRED, "Competitor", competitor.getId(),
+                "Se retiro al competidor '" + competitor.getNickname() + "'",
+                "status=" + anterior, "status=" + CompetitorStatus.RETIRED);
     }
 
     // ------------------------------------------------------------------
