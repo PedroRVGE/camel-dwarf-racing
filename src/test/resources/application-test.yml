@@ -1,0 +1,38 @@
+# =============================================================================
+# PERFIL "test"  ->  lo activan las clases de prueba con @ActiveProfiles("test")
+# =============================================================================
+# Existe por una razon concreta: application.yml deja spring.profiles.active en
+# "docker", y ese perfil pide DB_URL, DB_USERNAME y DB_PASSWORD como variables de
+# entorno. Sin este perfil, cualquier test que levante el contexto de Spring
+# fallaria al arrancar buscando variables que en la maquina de los tests no
+# existen.
+#
+# La direccion de la base NO esta aca. La pone PostgresTestBase en tiempo de
+# ejecucion, porque Testcontainers publica Postgres en un puerto al azar que no se
+# conoce hasta que el contenedor levanta.
+# =============================================================================
+
+spring:
+  flyway:
+    # SOLO el esquema. Los datos de ejemplo de db/seed quedan deliberadamente
+    # afuera: si se cargaran, cada test de listados arrancaria con nueve
+    # competidores y siete carreras que no puso, y todo conteo daria distinto.
+    # Cada test crea lo que necesita y nada mas.
+    #
+    # Es el mismo valor que Flyway usaria por defecto; va escrito igual para que
+    # quede a la vista que la ausencia del seed es una decision y no un olvido.
+    locations: classpath:db/migration
+
+  jpa:
+    # Nada de SQL en la salida por defecto: una suite entera lo vuelve ilegible.
+    # Para investigar un test puntual, ponerlo en true un rato.
+    show-sql: false
+
+logging:
+  level:
+    # Testcontainers avisa de cada imagen que baja y cada contenedor que arranca.
+    # Util la primera vez, ruido a partir de la segunda.
+    org.testcontainers: warn
+    com.github.dockerjava: warn
+    # Hibernate avisa por consola cada vez que valida el esquema.
+    org.hibernate.tool.schema: warn
