@@ -72,6 +72,11 @@ services:
       # contra este mismo stack, sin tener que reconstruir la imagen en cada
       # cambio. Los dos estan declarados en el realm de Keycloak.
       - CORS_ALLOWED_ORIGINS=http://localhost:${WEB_PORT:-3000},http://localhost:5173
+
+      # El maximo de integrantes por equipo. El enunciado pide que sea
+      # configurable, asi que se expone como variable en vez de quedar fija en
+      # una constante de Java. Si no esta en el .env, la app usa 5.
+      - TEAM_MAX_MEMBERS=${TEAM_MAX_MEMBERS:-5}
     healthcheck:
       # Consulta /actuator/health, que responde UP recien cuando el contexto de
       # Spring termino de levantar y la base esta conectada. Sin esto, Docker

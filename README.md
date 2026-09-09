@@ -8,6 +8,8 @@ Es una API REST en Java con una interfaz web que la consume, base de datos
 persistente, autenticación con roles y todo corriendo en contenedores. Trabajo de
 la materia Implementación de Software.
 
+Lo hicimos Sebastián Pérez, Samuel Ramírez y Pedro Rueda.
+
 ---
 
 ## Levantarlo
@@ -58,6 +60,48 @@ WEB_PORT=3001
 La única excepción es `API_BASE_URL`, que hay que dejar apuntando al mismo puerto
 que `APP_PORT`. Es la dirección que usa el navegador para hablarle a la API, y por
 eso no se puede derivar sola.
+
+---
+
+## Variables de entorno
+
+Todas viven en el `.env`, que no se versiona. La plantilla es `.env.example`, que
+trae los mismos nombres con los comentarios largos; acá está el resumen.
+
+| Variable | Qué hace | Ejemplo |
+|---|---|---|
+| `DB_NAME` | Nombre de la base que Postgres crea la primera vez | `camelracing` |
+| `DB_USER` | Dueño de esa base, y el usuario con el que se conecta la API | `camelracing` |
+| `DB_PASSWORD` | Su contraseña. No tiene valor por defecto: si falta, la base no arranca | `cambiame` |
+| `DB_PORT` | Puerto de Postgres en tu máquina | `5432` |
+| `APP_PORT` | Puerto de la API en tu máquina | `8080` |
+| `KEYCLOAK_PORT` | Puerto de Keycloak en tu máquina | `8180` |
+| `WEB_PORT` | Puerto de la interfaz en tu máquina | `3000` |
+| `KEYCLOAK_ADMIN` | Usuario de la consola de Keycloak, no de la aplicación | `admin` |
+| `KEYCLOAK_ADMIN_PASSWORD` | Su contraseña | `cambiame` |
+| `API_BASE_URL` | Dirección de la API vista desde el navegador. Va con el mismo puerto que `APP_PORT` | `http://localhost:8080` |
+| `TEAM_MAX_MEMBERS` | Máximo de integrantes que se le pueden poner a un equipo | `5` |
+
+Los cuatro puertos son los del host. Adentro de los contenedores son fijos y no
+dependen de esto, así que cambiarlos no toca nada más que la dirección por la que
+entrás. Los dos `cambiame` son eso, un recordatorio: son las únicas dos
+contraseñas que hay que inventar.
+
+Hay otras variables que la aplicación lee y que no van en el `.env` porque compose
+las arma sola a partir de las de arriba: `DB_URL`, `DB_USERNAME`,
+`KEYCLOAK_ISSUER_URI`, `KEYCLOAK_JWKS_URI`, `KEYCLOAK_PUBLIC_URL`,
+`KEYCLOAK_REALM`, `CORS_ALLOWED_ORIGINS` y `SPRING_PROFILES_ACTIVE`. Escribirlas a
+mano no agrega nada y habilita que queden contradiciendo a las otras.
+
+Tres que el enunciado menciona no existen acá, y no es un olvido. `DB_HOST` es
+siempre `db` adentro de la red de Docker, porque así se llama el servicio en
+`compose.yml`; hacerlo configurable solo daría la posibilidad de romperlo.
+`JWT_SECRET` y `JWT_EXPIRATION` tendrían sentido si la aplicación firmara los
+tokens, y no los firma: los emite Keycloak con un par de claves RSA propio y la API
+se limita a bajar la clave pública para verificar la firma. Dejar un `JWT_SECRET`
+sin usar en el `.env` sería peor que no tenerlo, porque haría pensar que hay una
+clave compartida donde no hay ninguna. La duración del token se configura en el
+realm, en `keycloak/realm-camelracing.json`.
 
 ---
 
@@ -206,9 +250,149 @@ solamente cuando el problema es de validación:
   "timestamp": "2026-09-07T14:30:00",
   "status": 400,
   "error": "Bad Request",
-  "message": "Hay campos invalidos",
+  "message": "Error de validacion en los datos enviados",
   "path": "/api/competitors",
   "validationErrors": { "weightKg": "El peso tiene que ser mayor que cero" }
+}
+```
+
+### Ejemplos con curl
+
+Todo empieza por un token: salvo Swagger y el healthcheck, no hay endpoint que
+conteste sin uno. Se lo pide a Keycloak.
+
+```bash
+TOKEN=$(curl -s -X POST \
+  http://localhost:8180/realms/camelracing/protocol/openid-connect/token \
+  -d grant_type=password \
+  -d client_id=camelracing-web \
+  -d username=admin \
+  -d password=admin123 \
+  | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+```
+
+Con `jq` instalado, `| jq -r .access_token` hace lo mismo y se lee mejor. Los
+ejemplos son de Bash: en PowerShell las comillas simples de los `-d` llegan de otra
+forma y hay que reescribirlos, así que desde Windows conviene usar Swagger o la
+colección de Postman.
+
+Pedir el token con usuario y contraseña está habilitado para poder probar desde la
+consola. La interfaz no lo usa: manda el navegador a la pantalla de Keycloak, que
+es lo que corresponde y lo único que sigue sirviendo si mañana se agrega un segundo
+factor o un proveedor externo.
+
+Listar competidores, filtrando por categoría y ordenando por apodo:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/competitors?type=DWARF&size=5&sort=nickname,asc"
+```
+
+Crear uno:
+
+```bash
+curl -s -X POST http://localhost:8080/api/competitors \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "name": "Byte",
+        "nickname": "El Camello Cuantico",
+        "type": "CAMEL",
+        "dateOfBirth": "2019-04-12",
+        "weightKg": 612.50,
+        "heightCm": 195.00,
+        "countryOfOrigin": "Envigado"
+      }'
+```
+
+Devuelve 201 con el competidor y su `id`. La segunda vez devuelve 409, porque el
+apodo ya está tomado.
+
+La tabla de posiciones, que es la consulta que más se mira:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/standings/competitors?size=10"
+```
+
+```json
+{
+  "content": [
+    { "position": 1, "participantName": "Byte", "points": 10,
+      "racesFinished": 1, "victories": 1, "defeats": 0 }
+  ],
+  "page": 0, "size": 10, "totalElements": 9, "totalPages": 1,
+  "first": true, "last": true
+}
+```
+
+Los errores también sirven como ejemplo, porque son los que más se ven. Sin token:
+
+```bash
+curl -s http://localhost:8080/api/competitors
+```
+
+```json
+{
+  "timestamp": "2026-09-09T19:23:41.112893",
+  "status": 401,
+  "error": "Unauthorized",
+  "message": "Hace falta un token valido para acceder a este recurso",
+  "path": "/api/competitors"
+}
+```
+
+Con un token de `viewer` intentando crear un competidor —el mismo pedido de arriba,
+pero pidiendo el token con `username=viewer` y `password=viewer123`:
+
+```json
+{
+  "timestamp": "2026-09-09T19:23:41.014175",
+  "status": 403,
+  "error": "Forbidden",
+  "message": "Tu rol no tiene permiso para esta operacion",
+  "path": "/api/competitors"
+}
+```
+
+Con datos inválidos —apodo vacío, peso negativo y fecha de nacimiento en el
+futuro— la respuesta dice qué campo tiene qué problema, en lugar de un "datos
+incorrectos" que obligue a adivinar:
+
+```json
+{
+  "timestamp": "2026-09-09T19:23:41.910620",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Error de validacion en los datos enviados",
+  "path": "/api/competitors",
+  "validationErrors": {
+    "name": "El nombre debe tener entre 2 y 150 caracteres",
+    "nickname": "El apodo debe tener entre 2 y 100 caracteres",
+    "weightKg": "El peso tiene que ser mayor que cero",
+    "dateOfBirth": "La fecha de nacimiento tiene que estar en el pasado"
+  }
+}
+```
+
+Y el 409, que es el que aparece cuando el pedido está bien escrito pero va contra
+una regla: largar una carrera con un solo inscripto, repetir un apodo, anotar a
+alguien dos veces, o esto, que es darla por terminada faltando resultados.
+
+```bash
+curl -s -X PATCH "http://localhost:8080/api/races/$CARRERA/status" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "COMPLETED"}'
+```
+
+```json
+{
+  "timestamp": "2026-09-09T19:24:02.551830",
+  "status": 409,
+  "error": "Conflict",
+  "message": "La carrera no se puede dar por terminada: faltan cargar 1 resultado(s). Los participantes que no corrieron van como DID_NOT_START",
+  "path": "/api/races/.../status"
 }
 ```
 
@@ -356,6 +540,71 @@ npm run dev
 Queda en http://localhost:5173 con recarga automática, contra el mismo backend que
 corre en Docker. Ese puerto ya está declarado en el realm de Keycloak y en la
 configuración de CORS de la API, así que no hay que tocar nada.
+
+---
+
+## Limitaciones conocidas
+
+Corre en una sola instancia y da por sentado que es la única. Las estadísticas de
+cada competidor y de cada equipo están guardadas en su propia fila y no calculadas
+al momento, y se actualizan dentro de la misma transacción que carga el resultado.
+Con dos copias de la API atendiendo a la vez, dos resultados de la misma carrera
+cargados en el mismo instante pueden pisarse el contador. No hay bloqueo optimista
+para evitarlo, porque para la liga de una materia agrega una complejidad que
+todavía no se paga.
+
+La bitácora sirve para leer, no para reconstruir. Guarda quién, cuándo, sobre qué
+entidad y los valores viejo y nuevo como texto, pero el id de la entidad afectada
+no tiene clave foránea a ninguna tabla, porque según el caso apunta a seis tablas
+distintas. Desde ahí no se puede deshacer un cambio.
+
+Los usuarios están solo en Keycloak, y eso también tiene un costo. La API no puede
+listar usuarios ni mostrar el perfil de alguien que no sea el que está conectado.
+La bitácora guarda el nombre de usuario tal como venía en el token, así que si en
+Keycloak se renombra a una persona, los registros viejos quedan con el nombre
+anterior.
+
+El frontend no tiene pruebas automatizadas. Las 71 pruebas cubren el backend
+entero, incluidas las de punta a punta contra un Postgres y un Keycloak de verdad,
+pero la interfaz se verificó a mano y con un render sin cabeza que confirma que
+monta y no tira errores. Un cambio que rompa un componente no hace fallar ninguna
+prueba, y debería.
+
+No hay integración continua ni despliegue. El proyecto se levanta con Docker
+Compose en la máquina de quien lo corre; no hay nada que ejecute las pruebas en
+cada pull request, ni imágenes publicadas en ningún registro.
+
+Nada avisa nada. No hay correos, ni notificaciones, ni actualizaciones en vivo: si
+alguien carga un resultado, el resto lo ve cuando recarga la página.
+
+La base y la API están en inglés, y el código y los mensajes en español. Es a
+propósito, porque los nombres de tablas y campos se leen igual en cualquier parte y
+los mensajes los lee el usuario, pero es una mezcla; en un equipo más grande habría
+que dejarlo escrito en algún lado antes de que cada uno elija distinto.
+
+## Mejoras futuras
+
+Lo primero sería exportar a CSV la tabla de posiciones y los resultados de una
+carrera. Este sistema reemplaza una planilla de Excel, y lo primero que va a pedir
+quien la usaba es una forma de volver a sacar los datos a una planilla.
+
+Después, integración continua: un workflow que en cada pull request compile y corra
+las 71 pruebas. Testcontainers ya funciona sin configuración extra en los runners
+de GitHub, así que es más trabajo escribir el archivo que resolver el problema.
+
+Pruebas del frontend con Vitest y Testing Library, empezando por las que más valen:
+que `RutaProtegida` mande al login sin sesión y a acceso denegado sin permiso, y que
+el cliente de la API reparta bien los errores de validación entre los campos del
+formulario.
+
+Seguimiento en vivo de la carrera en curso con server-sent events, que para este
+caso alcanza y es bastante más simple que websockets: el servidor manda y el
+navegador escucha, que es justo lo que hace falta.
+
+Y si la liga creciera, mover las estadísticas a una vista materializada que se
+refresque al terminar cada carrera. Se dejarían de escribir contadores a mano, con
+lo que desaparece la posibilidad de que queden desfasados, y la tabla de posiciones
+seguiría respondiendo igual de rápido.
 
 ---
 
